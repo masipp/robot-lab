@@ -1,0 +1,11 @@
+{
+  "env": "HalfCheetah-v5",
+  "algo": "SAC",
+  "seed": 42,
+  "config": null,
+  "output_dir": null,
+  "eval_freq": 10000,
+  "eval_episodes": 10,
+  "save_freq": null,
+  "checkpoints": false
+}

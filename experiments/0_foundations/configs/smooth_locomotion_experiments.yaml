@@ -1,0 +1,204 @@
+# Smooth Locomotion Experiments Configuration
+# Contains all experiment variants for systematic control exploration
+#
+# Design Discussion Summary (2026-02-18):
+# - Using kp=50 as baseline (reduced from 100 for compliance)
+# - Frameskip approach: observe and act at same reduced rate (standard practice)
+# - Training WITH modifications (Option A) for consistent learning
+# - Control frequency sweep: n=1,2,3,4 → 50Hz, 25Hz, 16.7Hz, 12.5Hz
+# - Damping sweep at kp=50 baseline
+
+# Common configuration for all experiments
+common:
+  environment: A1Quadruped-v0
+  algorithm: SAC
+  num_envs: 8
+  eval_freq: 10000
+  eval_episodes: 10
+  training:
+    total_timesteps: 500000
+    seed: 42
+  
+  # Metrics to compute
+  metrics:
+    smoothness:
+      - jerk_mean
+      - jerk_max
+      - accel_variance
+    actions:
+      - action_delta_mean
+      - action_delta_max
+      - action_frequency_power
+    performance:
+      - forward_distance
+      - episode_length
+      - energy_cost
+    stability:
+      - fall_rate
+      - orientation_variance
+      - base_height_variance
+
+experiments:
+  # =============================================================================
+  # Group 1: PD Gain Tuning (Baseline kp=50)
+  # =============================================================================
+  
+  exp0_baseline:
+    description: "Baseline - Medium stiffness position control (kp=50)"
+    tag: SmoothMotion-ControlGains
+    control_params:
+      kp: 50
+      kd: null  # Use joint damping from XML
+  
+  exp1a_kp100:
+    description: "High stiffness position control (kp=100)"
+    tag: SmoothMotion-ControlGains
+    control_params:
+      kp: 100
+      kd: null
+  
+  exp1b_kp20:
+    description: "Low stiffness position control (kp=20)"
+    tag: SmoothMotion-ControlGains
+    control_params:
+      kp: 20
+      kd: null
+  
+  # =============================================================================
+  # Group 2: Damping Tuning (kp=50 baseline)
+  # =============================================================================
+  
+  exp2a_kd5:
+    description: "Light damping (kp=50, kd=5)"
+    tag: SmoothMotion-Damping
+    control_params:
+      kp: 50
+      kd: 5
+  
+  exp2b_kd10:
+    description: "Medium damping (kp=50, kd=10)"
+    tag: SmoothMotion-Damping
+    control_params:
+      kp: 50
+      kd: 10
+  
+  exp2c_kd20:
+    description: "Heavy damping (kp=50, kd=20)"
+    tag: SmoothMotion-Damping
+    control_params:
+      kp: 50
+      kd: 20
+  
+  # =============================================================================
+  # Group 3: Control Frequency (Frameskip) - Train with reduced rate
+  # =============================================================================
+  
+  exp3a_frameskip1:
+    description: "No frameskip - 50Hz control (baseline comparison)"
+    tag: SmoothMotion-ControlFrequency
+    control_params:
+      kp: 50
+      kd: null
+    action_repeat:
+      n: 1  # No skip, standard control rate
+  
+  exp3b_frameskip2:
+    description: "2x frameskip - 25Hz effective control rate"
+    tag: SmoothMotion-ControlFrequency
+    control_params:
+      kp: 50
+      kd: null
+    action_repeat:
+      n: 2
+  
+  exp3c_frameskip3:
+    description: "3x frameskip - 16.7Hz effective control rate"
+    tag: SmoothMotion-ControlFrequency
+    control_params:
+      kp: 50
+      kd: null
+    action_repeat:
+      n: 3
+  
+  exp3d_frameskip4:
+    description: "4x frameskip - 12.5Hz effective control rate"
+    tag: SmoothMotion-ControlFrequency
+    control_params:
+      kp: 50
+      kd: null
+    action_repeat:
+      n: 4
+  
+  # =============================================================================
+  # Group 4: Action Filtering (EMA) - Train with filter
+  # =============================================================================
+  
+  exp4a_filter_alpha07:
+    description: "Light EMA filtering (alpha=0.7) - trained with filter"
+    tag: SmoothMotion-ActionFiltering
+    control_params:
+      kp: 50
+      kd: null
+    action_filter:
+      type: exponential_moving_average
+      alpha: 0.7
+  
+  exp4b_filter_alpha05:
+    description: "Medium EMA filtering (alpha=0.5) - trained with filter"
+    tag: SmoothMotion-ActionFiltering
+    control_params:
+      kp: 50
+      kd: null
+    action_filter:
+      type: exponential_moving_average
+      alpha: 0.5
+  
+  exp4c_filter_alpha03:
+    description: "Heavy EMA filtering (alpha=0.3) - trained with filter"
+    tag: SmoothMotion-ActionFiltering
+    control_params:
+      kp: 50
+      kd: null
+    action_filter:
+      type: exponential_moving_average
+      alpha: 0.3
+  
+  # =============================================================================
+  # Group 5: Reward Engineering (Future)
+  # =============================================================================
+  
+  exp6a_reward_action:
+    description: "Action smoothness penalty in reward (requires env modification)"
+    tag: SmoothMotion-RewardEngineering
+    control_params:
+      kp: 50
+      kd: null
+    reward_penalties:
+      lambda_action: 0.01
+      lambda_jerk: 0.0
+    enabled: false
+    notes: "Requires environment modification to include penalty in reward"
+  
+  exp6b_reward_jerk:
+    description: "Jerk penalty in reward (requires env modification)"
+    tag: SmoothMotion-RewardEngineering
+    control_params:
+      kp: 50
+      kd: null
+    reward_penalties:
+      lambda_action: 0.0
+      lambda_jerk: 0.001
+    enabled: false
+    notes: "Requires environment modification to include penalty in reward"
+  
+  exp6c_reward_combined:
+    description: "Combined smoothness penalties (requires env modification)"
+    tag: SmoothMotion-RewardEngineering
+    control_params:
+      kp: 50
+      kd: null
+    reward_penalties:
+      lambda_action: 0.01
+      lambda_jerk: 0.001
+    enabled: false
+    notes: "Requires environment modification to include penalty in reward"

@@ -1,0 +1,10 @@
+{
+  "env": "HalfCheetah-v5",
+  "algo": "SAC",
+  "model_path": null,
+  "vecnorm_path": null,
+  "episodes": 3,
+  "no_render": false,
+  "no_plot": false,
+  "output_dir": null
+}

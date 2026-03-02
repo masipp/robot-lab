@@ -1,0 +1,18 @@
+{
+    "environment": "default",
+    "algorithm": "default",
+    "num_envs": 8,
+    "total_timesteps": 500000,
+    "hyperparameters": {
+        "policy": "MlpPolicy",
+        "learning_rate": 0.0003,
+        "gamma": 0.99,
+        "verbose": 1
+    },
+    "vec_normalize": {
+        "norm_obs": true,
+        "norm_reward": true,
+        "clip_obs": 10.0
+    },
+    "notes": "This is a fallback configuration used when no specific environment/algorithm config is found. It contains minimal settings that work for most algorithms, but you should create a dedicated config file for optimal performance."
+}

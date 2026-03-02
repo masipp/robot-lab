@@ -1,0 +1,10 @@
+{
+  "env": "CartPole-v1",
+  "algo": "PPO",
+  "model_path": null,
+  "vecnorm_path": null,
+  "episodes": 3,
+  "no_render": false,
+  "no_plot": false,
+  "output_dir": null
+}

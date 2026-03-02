@@ -205,3 +205,31 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+
+# Models (large files)
+models/*.zip
+models/*.pkl
+
+# User data directory (but keep debug configs)
+data/experiments/
+data/models/
+data/logs/
+data/tensorboard/
+
+# Old training artifacts (if any remain in root)
+*.zip
+*.pkl
+
+# IDE
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Results
+*.png
+!*_results.png

@@ -1,0 +1,32 @@
+{
+    "environment": "Pusher-v5",
+    "algorithm": "SAC",
+    "num_envs": 8,
+    "total_timesteps": 1000000,
+    "hyperparameters": {
+        "policy": "MlpPolicy",
+        "learning_rate": 0.001,
+        "buffer_size": 300000,
+        "learning_starts": 5000,
+        "batch_size": 256,
+        "tau": 0.02,
+        "gamma": 0.98,
+        "train_freq": 32,
+        "gradient_steps": 32,
+        "ent_coef": "auto_0.2",
+        "target_entropy": -3.5,
+        "use_sde": true,
+        "sde_sample_freq": 4,
+        "policy_kwargs": {
+            "net_arch": [256, 256],
+            "log_std_init": -2
+        }
+    },
+    "vec_normalize": {
+        "norm_obs": true,
+        "norm_reward": true,
+        "clip_obs": 10.0,
+        "clip_reward": 10.0,
+        "gamma": 0.98
+    }
+}

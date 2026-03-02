@@ -1,0 +1,36 @@
+{
+  "environments": [
+    {
+      "env_id": "GripperEnv-v0",
+      "entry_point": "robot_lab.envs.manipulation.gripper:GripperEnv",
+      "max_episode_steps": 1000,
+      "category": "manipulation",
+      "difficulty": "medium",
+      "description": "MuJoCo-based gripper manipulation",
+      "observation_space_desc": "Joint positions and velocities",
+      "action_space_desc": "Continuous: Joint torques or target positions",
+      "is_custom": true,
+      "requires_mujoco": true,
+      "requires_robot_descriptions": false,
+      "default_algorithm": "SAC",
+      "recommended_timesteps": 300000,
+      "tags": ["continuous", "manipulation", "custom", "mujoco"]
+    },
+    {
+      "env_id": "A1Quadruped-v0",
+      "entry_point": "robot_lab.envs.locomotion.quadruped:A1QuadrupedEnv",
+      "max_episode_steps": 1000,
+      "category": "locomotion",
+      "difficulty": "expert",
+      "description": "Unitree A1 quadruped locomotion with MuJoCo",
+      "observation_space_desc": "Joint positions, velocities, base orientation and velocity (31D)",
+      "action_space_desc": "Continuous: Joint torques for 12 joints (3 per leg)",
+      "is_custom": true,
+      "requires_mujoco": true,
+      "requires_robot_descriptions": true,
+      "default_algorithm": "SAC",
+      "recommended_timesteps": 3000000,
+      "tags": ["continuous", "locomotion", "custom", "mujoco", "quadruped", "realistic"]
+    }
+  ]
+}

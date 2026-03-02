@@ -1,0 +1,106 @@
+<mujoco model="simple_quadruped">
+  <compiler angle="radian" coordinate="local" inertiafromgeom="auto"/>
+  <option timestep="0.01" gravity="0 0 -9.81"/>
+  
+  <default>
+    <joint armature="0.1" damping="0.5" limited="true"/>
+    <geom contype="0" conaffinity="0" condim="3" density="1000" friction="1 0.1 0.1"/>
+  </default>
+  
+  <asset>
+    <texture type="skybox" builtin="gradient" rgb1="0.3 0.5 0.7" rgb2="0 0 0" width="512" height="512"/>
+    <texture name="texplane" type="2d" builtin="checker" rgb1="0.2 0.3 0.4" rgb2="0.1 0.2 0.3" width="512" height="512" mark="cross" markrgb="1 1 1"/>
+    <material name="matplane" reflectance="0.3" texture="texplane" texrepeat="1 1" texuniform="true"/>
+  </asset>
+  
+  <worldbody>
+    <geom name="floor" pos="0 0 0" size="50 50 0.1" type="plane" material="matplane" contype="1" conaffinity="1"/>
+    <light directional="true" diffuse="0.8 0.8 0.8" specular="0.3 0.3 0.3" pos="0 0 4" dir="0 0 -1"/>
+    
+    <!-- Main body -->
+    <body name="torso" pos="0 0 0.4">
+      <freejoint/>
+      <geom name="torso" type="box" size="0.25 0.15 0.08" rgba="0.6 0.6 0.8 1" mass="5.0" contype="1" conaffinity="1"/>
+      <camera name="track" mode="targetbody" pos="0 -2 1" xyaxes="1 0 0 0 1 2"/>
+      
+      <!-- Front Left Leg -->
+      <body name="fl_hip" pos="0.2 0.15 0">
+        <joint name="fl_hip" type="hinge" pos="0 0 0" axis="1 0 0" range="-0.7 0.7"/>
+        <geom type="capsule" size="0.03" fromto="0 0 0 0 0.05 0" rgba="0.8 0.6 0.6 1" mass="0.5"/>
+        <body name="fl_thigh" pos="0 0.05 0">
+          <joint name="fl_thigh" type="hinge" pos="0 0 0" axis="0 1 0" range="-1.0 1.5"/>
+          <geom type="capsule" size="0.03" fromto="0 0 0 0 0 -0.2" rgba="0.8 0.6 0.6 1" mass="0.8"/>
+          <body name="fl_knee" pos="0 0 -0.2">
+            <joint name="fl_knee" type="hinge" pos="0 0 0" axis="0 1 0" range="-2.0 -0.2"/>
+            <geom type="capsule" size="0.025" fromto="0 0 0 0 0 -0.2" rgba="0.8 0.6 0.6 1" mass="0.5"/>
+            <geom name="fl_foot" type="sphere" size="0.035" pos="0 0 -0.2" rgba="0.9 0.9 0.9 1" contype="1" conaffinity="1" condim="3" friction="1.5 0.1 0.1"/>
+          </body>
+        </body>
+      </body>
+      
+      <!-- Front Right Leg -->
+      <body name="fr_hip" pos="0.2 -0.15 0">
+        <joint name="fr_hip" type="hinge" pos="0 0 0" axis="1 0 0" range="-0.7 0.7"/>
+        <geom type="capsule" size="0.03" fromto="0 0 0 0 -0.05 0" rgba="0.8 0.6 0.6 1" mass="0.5"/>
+        <body name="fr_thigh" pos="0 -0.05 0">
+          <joint name="fr_thigh" type="hinge" pos="0 0 0" axis="0 1 0" range="-1.0 1.5"/>
+          <geom type="capsule" size="0.03" fromto="0 0 0 0 0 -0.2" rgba="0.8 0.6 0.6 1" mass="0.8"/>
+          <body name="fr_knee" pos="0 0 -0.2">
+            <joint name="fr_knee" type="hinge" pos="0 0 0" axis="0 1 0" range="-2.0 -0.2"/>
+            <geom type="capsule" size="0.025" fromto="0 0 0 0 0 -0.2" rgba="0.8 0.6 0.6 1" mass="0.5"/>
+            <geom name="fr_foot" type="sphere" size="0.035" pos="0 0 -0.2" rgba="0.9 0.9 0.9 1" contype="1" conaffinity="1" condim="3" friction="1.5 0.1 0.1"/>
+          </body>
+        </body>
+      </body>
+      
+      <!-- Back Left Leg -->
+      <body name="bl_hip" pos="-0.2 0.15 0">
+        <joint name="bl_hip" type="hinge" pos="0 0 0" axis="1 0 0" range="-0.7 0.7"/>
+        <geom type="capsule" size="0.03" fromto="0 0 0 0 0.05 0" rgba="0.8 0.6 0.6 1" mass="0.5"/>
+        <body name="bl_thigh" pos="0 0.05 0">
+          <joint name="bl_thigh" type="hinge" pos="0 0 0" axis="0 1 0" range="-1.0 1.5"/>
+          <geom type="capsule" size="0.03" fromto="0 0 0 0 0 -0.2" rgba="0.8 0.6 0.6 1" mass="0.8"/>
+          <body name="bl_knee" pos="0 0 -0.2">
+            <joint name="bl_knee" type="hinge" pos="0 0 0" axis="0 1 0" range="-2.0 -0.2"/>
+            <geom type="capsule" size="0.025" fromto="0 0 0 0 0 -0.2" rgba="0.8 0.6 0.6 1" mass="0.5"/>
+            <geom name="bl_foot" type="sphere" size="0.035" pos="0 0 -0.2" rgba="0.9 0.9 0.9 1" contype="1" conaffinity="1" condim="3" friction="1.5 0.1 0.1"/>
+          </body>
+        </body>
+      </body>
+      
+      <!-- Back Right Leg -->
+      <body name="br_hip" pos="-0.2 -0.15 0">
+        <joint name="br_hip" type="hinge" pos="0 0 0" axis="1 0 0" range="-0.7 0.7"/>
+        <geom type="capsule" size="0.03" fromto="0 0 0 0 -0.05 0" rgba="0.8 0.6 0.6 1" mass="0.5"/>
+        <body name="br_thigh" pos="0 -0.05 0">
+          <joint name="br_thigh" type="hinge" pos="0 0 0" axis="0 1 0" range="-1.0 1.5"/>
+          <geom type="capsule" size="0.03" fromto="0 0 0 0 0 -0.2" rgba="0.8 0.6 0.6 1" mass="0.8"/>
+          <body name="br_knee" pos="0 0 -0.2">
+            <joint name="br_knee" type="hinge" pos="0 0 0" axis="0 1 0" range="-2.0 -0.2"/>
+            <geom type="capsule" size="0.025" fromto="0 0 0 0 0 -0.2" rgba="0.8 0.6 0.6 1" mass="0.5"/>
+            <geom name="br_foot" type="sphere" size="0.035" pos="0 0 -0.2" rgba="0.9 0.9 0.9 1" contype="1" conaffinity="1" condim="3" friction="1.5 0.1 0.1"/>
+          </body>
+        </body>
+      </body>
+    </body>
+  </worldbody>
+  
+  <actuator>
+    <!-- Position servos for all 12 joints -->
+    <position name="fl_hip_act" joint="fl_hip" kp="30" kv="5" ctrlrange="-0.7 0.7"/>
+    <position name="fl_thigh_act" joint="fl_thigh" kp="30" kv="5" ctrlrange="-1.0 1.5"/>
+    <position name="fl_knee_act" joint="fl_knee" kp="30" kv="5" ctrlrange="-2.0 -0.2"/>
+    
+    <position name="fr_hip_act" joint="fr_hip" kp="30" kv="5" ctrlrange="-0.7 0.7"/>
+    <position name="fr_thigh_act" joint="fr_thigh" kp="30" kv="5" ctrlrange="-1.0 1.5"/>
+    <position name="fr_knee_act" joint="fr_knee" kp="30" kv="5" ctrlrange="-2.0 -0.2"/>
+    
+    <position name="bl_hip_act" joint="bl_hip" kp="30" kv="5" ctrlrange="-0.7 0.7"/>
+    <position name="bl_thigh_act" joint="bl_thigh" kp="30" kv="5" ctrlrange="-1.0 1.5"/>
+    <position name="bl_knee_act" joint="bl_knee" kp="30" kv="5" ctrlrange="-2.0 -0.2"/>
+    
+    <position name="br_hip_act" joint="br_hip" kp="30" kv="5" ctrlrange="-0.7 0.7"/>
+    <position name="br_thigh_act" joint="br_thigh" kp="30" kv="5" ctrlrange="-1.0 1.5"/>
+    <position name="br_knee_act" joint="br_knee" kp="30" kv="5" ctrlrange="-2.0 -0.2"/>
+  </actuator>
+</mujoco>

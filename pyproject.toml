@@ -1,0 +1,84 @@
+[project]
+name = "robot-lab"
+version = "0.1.0"
+description = "Reinforcement learning playground for robotic environments with experiment automation"
+readme = "README.md"
+requires-python = ">=3.12"
+authors = [
+    {name = "Marco", email = "marco@example.com"}
+]
+dependencies = [
+    "gymnasium[classic-control,mujoco]>=0.28.0",
+    "stable-baselines3>=2.0.0",
+    "numpy>=2.0.0",
+    "matplotlib>=3.7.0",
+    "typer>=0.9.0",
+    "pydantic>=2.0.0",
+    "pyyaml>=6.0.0",
+    "rich>=13.0.0",
+    "loguru>=0.7.0",
+    "tensorboard>=2.20.0",
+    "torch==2.9.1",
+    "torchvision==0.24.1",
+]
+
+[tool.uv]
+# Configure PyTorch index for CUDA 12.6 wheels
+[[tool.uv.index]]
+name = "pytorch-cu126"
+url = "https://download.pytorch.org/whl/cu126"
+explicit = true
+
+[tool.uv.sources]
+# Tell uv to get PyTorch from the CUDA 12.6 index
+torch = { index = "pytorch-cu126" }
+torchvision = { index = "pytorch-cu126" }
+
+[project.optional-dependencies]
+robot-descriptions = [
+    "robot_descriptions>=1.9.0",
+]
+dev = [
+    "pytest>=7.0.0",
+    "ruff>=0.1.0",
+]
+
+# =============================================================================
+# PyTorch Configuration (GTX 1080 / CUDA 12.6)
+# =============================================================================
+# PyTorch 2.9.1+cu126 is locked in dependencies above and configured to
+# install from the PyTorch CUDA 12.6 index via tool.uv.sources.
+#
+# This ensures 'uv run' and 'uv sync' always use the correct version.
+#
+# GTX 1080 REQUIRES PyTorch 2.9.x (Compute Capability 6.1 / sm_61)
+# - PyTorch 2.10+ dropped support for sm_61
+# - CUDA 12.6 is compatible with GTX 1080
+#
+# To change PyTorch version (e.g., for different GPU):
+# 1. Modify torch/torchvision versions in dependencies
+# 2. Update tool.uv.index URL to match CUDA version
+# 3. Run: uv sync --reinstall-package torch
+#
+# See docs/GPU_SETUP.md for detailed GPU configuration guide.
+# =============================================================================
+
+[project.scripts]
+robot-lab = "robot_lab.cli:app"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["robot_lab"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+ignore = []
+
+# Pytest configuration is in pytest.ini (avoids conflicts with system pytest plugins)

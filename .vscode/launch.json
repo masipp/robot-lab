@@ -1,0 +1,180 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Train: MountainCarContinuous-v0 (SAC)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "robot_lab.cli",
+            "args": [
+                "train",
+                "--debug-config", "train_mountaincar_sac"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "name": "Train: Walker2d-v5 (SAC)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "robot_lab.cli",
+            "args": [
+                "train",
+                "--debug-config", "train_walker2d_sac"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "name": "Train: HalfCheetah-v5 (SAC)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "robot_lab.cli",
+            "args": [
+                "train",
+                "--debug-config", "train_halfcheetah_sac"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "name": "Train: CartPole-v1 (PPO)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "robot_lab.cli",
+            "args": [
+                "train",
+                "--debug-config", "train_cartpole_ppo"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "name": "Train: Custom (Enter Env/Algo)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "robot_lab.cli",
+            "args": [
+                "train",
+                "--env", "${input:environmentName}",
+                "--algo", "${input:algorithmName}",
+                "--seed", "42"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "name": "Visualize: MountainCarContinuous-v0 (SAC)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "robot_lab.cli",
+            "args": [
+                "visualize",
+                "--debug-config", "visualize_mountaincar_sac"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "name": "Visualize: Walker2d-v5 (SAC)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "robot_lab.cli",
+            "args": [
+                "visualize",
+                "--debug-config", "visualize_walker2d_sac"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "name": "Visualize: HalfCheetah-v5 (SAC)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "robot_lab.cli",
+            "args": [
+                "visualize",
+                "--debug-config", "visualize_halfcheetah_sac"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "name": "Visualize: CartPole-v1 (PPO)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "robot_lab.cli",
+            "args": [
+                "visualize",
+                "--debug-config", "visualize_cartpole_ppo"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "name": "Visualize: Custom (Enter Env/Algo)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "robot_lab.cli",
+            "args": [
+                "visualize",
+                "--env", "${input:environmentName}",
+                "--algo", "${input:algorithmName}"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "name": "TensorBoard",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "robot_lab.cli",
+            "args": [
+                "tensorboard"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "name": "Info: System Information",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "robot_lab.cli",
+            "args": [
+                "info"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "cwd": "${workspaceFolder}"
+        }
+    ],
+    "inputs": [
+        {
+            "id": "environmentName",
+            "type": "promptString",
+            "description": "Environment name (e.g., Walker2d-v5, MountainCarContinuous-v0)",
+            "default": "Walker2d-v5"
+        },
+        {
+            "id": "algorithmName",
+            "type": "pickString",
+            "description": "Algorithm to use",
+            "options": [
+                "SAC",
+                "PPO"
+            ],
+            "default": "SAC"
+        }
+    ]
+}
