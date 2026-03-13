@@ -1,3 +1,62 @@
+<!-- BMAD:START -->
+# BMAD Method — Project Instructions
+
+## Project Configuration
+
+- **Project**: robot-lab
+- **User**: Marco
+- **Communication Language**: English
+- **Document Output Language**: English
+- **User Skill Level**: intermediate
+- **Output Folder**: {project-root}/.bmad_output
+- **Planning Artifacts**: {project-root}/.bmad_output/planning-artifacts
+- **Implementation Artifacts**: {project-root}/.bmad_output/implementation-artifacts
+- **Project Knowledge**: {project-root}/docs
+
+## BMAD Runtime Structure
+
+- **Agent definitions**: `_bmad/bmm/agents/` (BMM module) and `_bmad/core/agents/` (core)
+- **Workflow definitions**: `_bmad/bmm/workflows/` (organized by phase)
+- **Core tasks**: `_bmad/core/tasks/` (help, editorial review, indexing, sharding, adversarial review)
+- **Core workflows**: `_bmad/core/workflows/` (brainstorming, party-mode, advanced-elicitation)
+- **Workflow engine**: `_bmad/core/tasks/workflow.xml` (executes YAML-based workflows)
+- **Module configuration**: `_bmad/bmm/config.yaml`
+- **Core configuration**: `_bmad/core/config.yaml`
+- **Agent manifest**: `_bmad/_config/agent-manifest.csv`
+- **Workflow manifest**: `_bmad/_config/workflow-manifest.csv`
+- **Help manifest**: `_bmad/_config/bmad-help.csv`
+- **Agent memory**: `_bmad/_memory/`
+
+## Key Conventions
+
+- Always load `_bmad/bmm/config.yaml` before any agent activation or workflow execution
+- Store all config fields as session variables: `{user_name}`, `{communication_language}`, `{output_folder}`, `{planning_artifacts}`, `{implementation_artifacts}`, `{project_knowledge}`
+- MD-based workflows execute directly — load and follow the `.md` file
+- YAML-based workflows require the workflow engine — load `workflow.xml` first, then pass the `.yaml` config
+- Follow step-based workflow execution: load steps JIT, never multiple at once
+- Save outputs after EACH step when using the workflow engine
+- The `{project-root}` variable resolves to the workspace root at runtime
+
+## Available Agents
+
+| Agent | Persona | Title | Capabilities |
+|---|---|---|---|
+| bmad-master | BMad Master | BMad Master Executor, Knowledge Custodian, and Workflow Orchestrator | runtime resource management, workflow orchestration, task execution, knowledge custodian |
+| analyst | Mary | Business Analyst | market research, competitive analysis, requirements elicitation, domain expertise |
+| architect | Winston | Architect | distributed systems, cloud infrastructure, API design, scalable patterns |
+| dev | Amelia | Developer Agent | story execution, test-driven development, code implementation |
+| pm | John | Product Manager | PRD creation, requirements discovery, stakeholder alignment, user interviews |
+| qa | Quinn | QA Engineer | test automation, API testing, E2E testing, coverage analysis |
+| quick-flow-solo-dev | Barry | Quick Flow Solo Dev | rapid spec creation, lean implementation, minimum ceremony |
+| sm | Bob | Scrum Master | sprint planning, story preparation, agile ceremonies, backlog management |
+| tech-writer | Paige | Technical Writer | documentation, Mermaid diagrams, standards compliance, concept explanation |
+| ux-designer | Sally | UX Designer | user research, interaction design, UI patterns, experience strategy |
+
+## Slash Commands
+
+Type `/bmad-` in Copilot Chat to see all available BMAD workflows and agent activators. Agents are also available in the agents dropdown.
+<!-- BMAD:END -->
+
 # robot-lab AI Agent Instructions
 
 ## Project Overview
@@ -189,8 +248,8 @@ When user requests a "YouAreLazy" task, respond in this format:
 ```
 🚫 YouAreLazy Exception Raised!
 
-This task involves implementing [CORE CONCEPT] which is a LEARNING-CRITICAL component 
-for your career development in RL/robotics. Letting an AI implement this would defeat 
+This task involves implementing [CORE CONCEPT] which is a LEARNING-CRITICAL component
+for your career development in RL/robotics. Letting an AI implement this would defeat
 the purpose of your research roadmap.
 
 Why this is important for you to implement:
@@ -226,7 +285,7 @@ Once you've implemented the core logic, I can help integrate it into the pipelin
 **CRITICAL**: This is a **learning-focused research project**. The agent must actively track the user's skill development and adapt teaching approach accordingly.
 
 ### Skill Assessment Document
-- **Location**: `.github/USER_SKILL.md`
+- **Location**: `docs/user/USER_SKILL.md`
 - **Purpose**: Track progress across robotics/RL skill categories (0-5 scale)
 - **Update Frequency**: After significant interactions, weekly reviews, experiment completions
 
@@ -248,7 +307,7 @@ Once you've implemented the core logic, I can help integrate it into the pipelin
 
 **Update format** (append to "Interaction Log" in USER_SKILL.md):
 ```
-- **YYYY-MM-DD - [Topic]**: 
+- **YYYY-MM-DD - [Topic]**:
   - Skill updated: [Category] [Old Level] → [New Level]
   - Evidence: [User demonstrated X by doing Y]
   - Weak points revealed: [Gaps noticed during interaction]
@@ -393,7 +452,7 @@ But the core filtering logic? That's yours to implement. You'll learn more by do
 - Standard ML libraries usage
 
 ### Exception: Known Background
-User has "general education in IT and Programming" - do NOT use Socratic mode for:
+User has "general education in IT and Programming" — do NOT use Socratic mode for:
 - Python syntax, data structures, OOP
 - Git commands and workflows
 - Linux/bash operations
@@ -409,8 +468,8 @@ Use Socratic mode ONLY for:
 
 ### 1. Architecture & Design Principles
 - **Separation of Concerns**: CLI commands (`cli.py`) are thin wrappers around core logic (`training.py`, `visualization.py`)
-- **Readability First**: Prefer clear, readable code over clever/fancy logic - code is read more than written
-- **Strategic Documentation**: Document architectural decisions and "why" inline - implementation details that affect future changes must be explained
+- **Readability First**: Prefer clear, readable code over clever/fancy logic — code is read more than written
+- **Strategic Documentation**: Document architectural decisions and "why" inline — implementation details that affect future changes must be explained
 - **Configuration Over Code**: New hyperparameters go in JSON configs, not hardcoded in Python
 - **Library First**: All functionality must be importable as library functions, not just CLI commands
 - **No Side Effects on Import**: Package imports must not trigger training, file creation, or network calls
@@ -419,7 +478,7 @@ Use Socratic mode ONLY for:
 ### 2. Reproducibility & Experiment Tracking
 - **Always Use Seeds**: Every training run must accept and use a `seed` parameter
 - **Save Everything**: Models AND VecNormalize statistics must be saved together (breaking this breaks evaluation)
-- **Self-Contained Experiments**: Each experiment dir contains full config, hyperparameters, system info, and logs - must be reproducible without code access
+- **Self-Contained Experiments**: Each experiment dir contains full config, hyperparameters, system info, and logs — must be reproducible without code access
 - **Track System Info**: ExperimentTracker must log Python version, GPU info, git commit for reproducibility
 - **Immutable Configs**: Once an experiment starts, its config JSON is copied to experiment dir (don't modify originals)
 - **JSON Over Pickle**: Experiment metadata in JSON (human-readable, git-friendly), only model weights in binary
@@ -429,7 +488,7 @@ Use Socratic mode ONLY for:
 - **Type Hints Required**: All public functions must have full type hints (args, return type)
 - **Pydantic for Validation**: Use Pydantic models for complex data structures, not raw dicts
 - **Error Messages Actionable**: Errors must tell user exactly what to do (e.g., "Create walker2d_sac.json in configs/")
-- **Console Feedback**: Long operations must print progress (`✓`, `⚠`, `✗` symbols for clarity)
+- **Console Feedback**: Long operations must print progress (`✔`, `⚠`, `✘` symbols for clarity)
 - **Line Length**: 100 characters max (configured in ruff)
 
 ### 4. File Organization
@@ -484,10 +543,10 @@ Use Socratic mode ONLY for:
 ## Architecture
 
 ### Core Components
-- **CLI Entry Point**: `src/robot_lab/cli.py` (Typer app) → commands: `train`, `visualize`, `tensorboard`, `info`
-- **Training Pipeline**: `src/robot_lab/training.py` → handles vectorized envs, VecNormalize, callbacks
-- **Config System**: `src/robot_lab/config.py` → hierarchical JSON loading with `importlib.resources`
-- **Experiment Framework**: `src/robot_lab/experiments/` → schemas (Pydantic), tracker (JSON), results_db (JSON), AI planner (stub)
+- **CLI Entry Point**: `robot_lab/cli.py` (Typer app) → commands: `train`, `visualize`, `tensorboard`, `info`
+- **Training Pipeline**: `robot_lab/training.py` → handles vectorized envs, VecNormalize, callbacks
+- **Config System**: `robot_lab/config.py` → hierarchical JSON loading with `importlib.resources`
+- **Experiment Framework**: `robot_lab/experiments/` → schemas (Pydantic), tracker (JSON), results_db (JSON), AI planner (stub)
 
 ### Data Flow
 1. **Training**: CLI → `train()` → load config → create SubprocVecEnv → apply VecNormalize → SAC/PPO.learn() → save model + vecnorm
@@ -497,27 +556,27 @@ Use Socratic mode ONLY for:
 
 ## Critical Patterns
 
-### Config Hierarchy (src/robot_lab/config.py)
+### Config Hierarchy (`robot_lab/config.py`)
 - Environment name format: `Walker2d-v5` → extracts `walker2d` base name
 - Config lookup: `{base_name}_{algo}.json` (e.g., `walker2d_sac.json`)
-- Configs bundled in package at `src/robot_lab/configs/` (accessed via `importlib.resources.files()`)
+- Configs bundled in package at `robot_lab/configs/` (accessed via `importlib.resources.files()`)
 - Example config structure:
 ```json
 {
   "algorithm": "SAC",
   "num_envs": 8,
   "total_timesteps": 350000,
-  "hyperparameters": {...},  // passed directly to SAC(**hyperparams)
-  "vec_normalize": {"norm_obs": true, "norm_reward": true, ...}
+  "hyperparameters": {},
+  "vec_normalize": {"norm_obs": true, "norm_reward": true}
 }
 ```
 
-### Environment Registration (src/robot_lab/envs/__init__.py)
+### Environment Registration (`robot_lab/envs/__init__.py`)
 - Custom envs auto-registered on package import via `register_custom_envs()`
 - Pattern: `register(id='GripperEnv-v0', entry_point='robot_lab.envs.gripper:GripperEnv')`
 - Registered: `GripperEnv-v0`, `A1Quadruped-v0` (requires `robot_descriptions`)
 
-### Experiment Specs (src/robot_lab/experiments/)
+### Experiment Specs (`robot_lab/experiments/`)
 - Use Pydantic schemas for validation (`schemas.py`)
 - Templates in `spec_templates.py`: `hyperparam_sweep`, `algorithm_comparison`, `quick_test`
 - Access via: `from robot_lab.experiments import get_template`
@@ -546,8 +605,8 @@ robot-lab visualize --env MountainCarContinuous-v0 --algo SAC        # Verify po
 
 ### Linting
 ```bash
-ruff check src/
-ruff format src/
+ruff check robot_lab/
+ruff format robot_lab/
 ```
 
 ## Code Conventions
@@ -558,7 +617,7 @@ ruff format src/
 - Experiments: `from robot_lab.experiments import ExperimentTracker, ResultsDatabase, get_template`
 
 ### Error Handling
-- Configs: Print warnings with `⚠` for fallbacks, `✓` for successful loads
+- Configs: Print warnings with `⚠` for fallbacks, `✔` for successful loads
 - Missing files: Raise `ValueError` with actionable message (e.g., "Please create {filename}")
 - VecNormalize: Always save alongside model for evaluation consistency
 
@@ -589,7 +648,7 @@ ruff format src/
 - Document in comments with installation commands
 
 ## Future Development Areas (AI Planner Stubs)
-- `src/robot_lab/experiments/ai_planner.py`: LLM integration for experiment generation
+- `robot_lab/experiments/ai_planner.py`: LLM integration for experiment generation
 - Methods to implement: `generate_from_natural_language()`, `design_adaptive_experiment()`, `interpret_results()`
 - Use existing `ExperimentSpec` Pydantic models for structured output
 
@@ -598,10 +657,3 @@ ruff format src/
 2. **Environment names**: Extract base name correctly (`split('-')[0].lower()`)
 3. **Path resolution**: Use `get_models_dir(output_dir)` not manual `Path("models")` (breaks custom output)
 4. **Config access**: Use `importlib.resources.files('robot_lab')` not `__file__` (breaks installed package)
-5. **PyTorch**: Don't add to `dependencies` (separate CUDA-aware installation required)
-
-## Quick Reference
-- Add new environment config: Copy `src/robot_lab/configs/walker2d_sac.json`, rename to `{env}_{algo}.json`
-- Add CLI command: Decorate function with `@app.command()` in `cli.py`
-- Create experiment template: Add to `spec_templates.py`, follow existing Pydantic schema
-- Run experiments: Use `ExperimentTracker` for logging, `ResultsDatabase` for querying results

@@ -233,3 +233,8 @@ Thumbs.db
 # Results
 *.png
 !*_results.png
+
+#bmad
+_bmad/
+.github/prompts/*bmad*
+.github/agents/*bmad*

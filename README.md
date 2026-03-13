@@ -486,3 +486,25 @@ MIT License
 - CLI powered by [Typer](https://typer.tiangolo.com/)
 - Validation with [Pydantic](https://pydantic-docs.helpmanual.io/)
 
+---
+
+## BMAD — AI-Assisted Planning
+
+This project uses [BMAD](https://github.com/bmad-code-org) v6.0.4, an AI-assisted methodology for structured product planning, architecture, and development workflows. See the [BMAD documentation](https://github.com/bmad-code-org) for full usage details.
+
+### Prerequisites
+
+BMAD runs entirely inside VS Code via GitHub Copilot Chat — no separate binary to install. BMAD itself is already present in the `_bmad/` directory.
+
+| Requirement | Notes |
+|---|---|
+| [VS Code](https://code.visualstudio.com/) | Any recent version |
+| [GitHub Copilot](https://marketplace.visualstudio.com/items?itemName=GitHub.copilot) | Requires an active Copilot subscription |
+| [GitHub Copilot Chat](https://marketplace.visualstudio.com/items?itemName=GitHub.copilot-chat) | Enables prompt-file invocation |
+
+Invoke workflows by attaching a prompt file from `.github/prompts/` in Copilot Chat, e.g.:
+
+```
+#file:.github/prompts/bmad-bmm-validate-prd.prompt.md
+```
+
