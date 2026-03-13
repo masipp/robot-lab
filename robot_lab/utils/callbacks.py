@@ -3,8 +3,9 @@
 import time
 from pathlib import Path
 from typing import Optional
-from stable_baselines3.common.callbacks import BaseCallback
+
 from loguru import logger
+from stable_baselines3.common.callbacks import BaseCallback, EvalCallback
 
 
 class TimeBasedCheckpointCallback(BaseCallback):
@@ -147,8 +148,118 @@ class VecNormalizeSaveCallback(BaseCallback):
                 f"steps_{self.num_timesteps}.pkl"
             )
             vecnorm_path = self.save_path / vecnorm_name
-            
+
             self.training_env.save(str(vecnorm_path))
-            
+
             if self.verbose > 0:
                 logger.debug(f"VecNormalize stats saved → {vecnorm_path.name}")
+
+
+# ---------------------------------------------------------------------------
+# Atomic pair callbacks (Story 1.3)
+# ---------------------------------------------------------------------------
+
+
+class RobotLabCheckpointCallback(BaseCallback):
+    """Saves model `.zip` and VecNormalize `.pkl` as an atomic pair.
+
+    Both files are written inside a single `_save_atomic_pair()` call so they
+    can never become unpaired by a crash or early-stop between two separate
+    callbacks.
+
+    Args:
+        save_freq_seconds: Wall-clock interval between saves (default 600 = 10 min).
+        save_path: Directory to write checkpoints into.
+        name_prefix: Filename prefix (e.g. ``"sac_walker2d"``).
+        verbose: Verbosity level (0 = silent, 1 = log saves).
+    """
+
+    def __init__(
+        self,
+        save_freq_seconds: int = 600,
+        save_path: str = "checkpoints",
+        name_prefix: str = "model",
+        verbose: int = 1,
+    ) -> None:
+        super().__init__(verbose)
+        self.save_freq_seconds = save_freq_seconds
+        self.save_path = Path(save_path)
+        self.name_prefix = name_prefix
+        self._checkpoint_count: int = 0
+        self._last_save_time: float = 0.0
+        self._start_time: float = 0.0
+        self.save_path.mkdir(parents=True, exist_ok=True)
+
+    def _init_callback(self) -> None:
+        """Record start time so the first checkpoint fires after one full interval."""
+        self._last_save_time = time.time()
+        self._start_time = time.time()
+        if self.verbose > 0:
+            logger.info(
+                f"⏱ Atomic checkpoints enabled: every "
+                f"{self.save_freq_seconds}s ({self.save_freq_seconds / 60:.1f} min) → "
+                f"{self.save_path}"
+            )
+
+    def _on_step(self) -> bool:
+        """Fire `_save_atomic_pair` when the interval has elapsed."""
+        if time.time() - self._last_save_time >= self.save_freq_seconds:
+            self._save_atomic_pair()
+            self._last_save_time = time.time()
+        return True
+
+    def _save_atomic_pair(self) -> None:
+        """Write model `.zip` then VecNorm `.pkl` in a single call.
+
+        If the training environment does not expose a ``save`` method (i.e. it is
+        not wrapped in ``VecNormalize``), the `.pkl` step is skipped silently.
+        """
+        self._checkpoint_count += 1
+        stem = (
+            f"{self.name_prefix}_ckpt{self._checkpoint_count:04d}"
+            f"_step{self.num_timesteps}"
+        )
+        model_path = self.save_path / f"{stem}.zip"
+        vecnorm_path = self.save_path / f"{stem}_vecnorm.pkl"
+
+        self.model.save(str(model_path))
+
+        if hasattr(self.training_env, "save"):
+            self.training_env.save(str(vecnorm_path))
+
+        if self.verbose > 0:
+            elapsed = (time.time() - self._start_time) / 60
+            has_vecnorm = hasattr(self.training_env, "save")
+            pair_str = (
+                f"{model_path.name} + {vecnorm_path.name}" if has_vecnorm else model_path.name
+            )
+            logger.success(
+                f"✔ Checkpoint {self._checkpoint_count} @ {self.num_timesteps:,} steps "
+                f"({elapsed:.1f} min) → {pair_str}"
+            )
+
+
+class RobotLabEvalCallback(EvalCallback):
+    """``EvalCallback`` extended to save a VecNorm `.pkl` alongside ``best_model.zip``.
+
+    Whenever the parent callback records a new best mean reward and writes
+    ``best_model.zip``, this subclass immediately saves
+    ``best_model_vecnorm.pkl`` to the same directory — guaranteeing the pair
+    is always present together.
+
+    All constructor arguments are forwarded unchanged to ``EvalCallback``.
+    """
+
+    def _on_step(self) -> bool:
+        """Delegate to parent; persist VecNorm if a new best was recorded."""
+        old_best = self.best_mean_reward
+        result = super()._on_step()
+
+        if self.best_mean_reward > old_best and self.best_model_save_path is not None:
+            vecnorm_path = Path(self.best_model_save_path) / "best_model_vecnorm.pkl"
+            if hasattr(self.training_env, "save"):
+                self.training_env.save(str(vecnorm_path))
+                logger.info(f"✔ Best-model VecNorm saved → {vecnorm_path}")
+
+        return result
+

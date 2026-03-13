@@ -1,310 +1,332 @@
-"""Experiment tracking for robot_lab using JSON and YAML files."""
+"""Experiment tracking for robot_lab using a consolidated metadata.json schema.
 
+Schema (per run):
+    {
+        "run":    { run_id, experiment, seed, phase, status, started_at, finished_at },
+        "config": { /* immutable full-config snapshot taken at start_run() */ },
+        "system": { python_version, gpu_name, cuda_version, git_commit, ... },
+        "metrics": {},
+        "custom": {}
+    }
+
+Only "metrics" and "custom" are writable via tracker.update().
+"run", "config", and "system" are populated once at start_run() and are read-only.
+"""
+
+import copy
 import json
-import yaml
-import platform
-import subprocess
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Any, Optional
-from loguru import logger
-from pydantic import BaseModel, ValidationError
+from typing import Any, Optional
 
-from robot_lab.experiments.schemas import RunMetadata
+from loguru import logger
+
+from robot_lab.utils.metadata import get_system_info
+from robot_lab.utils.paths import get_experiments_dir, get_results_index_path
+from robot_lab.utils.run_utils import generate_run_id
+
+# Sections that are populated once at start_run() and must not be mutated via update().
+_READ_ONLY_SECTIONS = frozenset({"run", "config", "system"})
+_WRITABLE_SECTIONS = frozenset({"metrics", "custom"})
+_ALL_SECTIONS = _READ_ONLY_SECTIONS | _WRITABLE_SECTIONS
+
+# Valid terminal status values.
+_TERMINAL_STATUSES = frozenset({"COMPLETED", "INTERRUPTED", "FAILED"})
+
+# ---------------------------------------------------------------------------
+# Experiment summary Markdown template
+# ---------------------------------------------------------------------------
+
+_SUMMARY_TEMPLATE = """\
+# Experiment Summary
+
+| Field | Value |
+|---|---|
+| Run ID | {run_id} |
+| Experiment | {experiment} |
+| Status | {status} |
+| Seed | {seed} |
+| Phase | {phase} |
+| Algorithm | {algorithm} |
+| Started | {started_at} |
+| Finished | {finished_at} |
+| Final Reward | {final_reward} |
+
+## Results
+
+<!-- Fill in: learning curves, key metrics, plots -->
+
+## Observations
+
+<!-- Fill in: what worked, what didn't, surprises -->
+
+## Next Steps
+
+<!-- Fill in: follow-up experiments, hyperparameter changes, environment modifications -->
+"""
 
 
 class ExperimentTracker:
-    """Lightweight experiment tracker using JSON files."""
-    
+    """Lightweight experiment tracker using a single consolidated metadata.json.
+
+    Usage::
+
+        tracker = ExperimentTracker(
+            experiment_name="0_foundations",
+            run_name="sac_mountaincar",
+            seed=42,
+            phase=0,
+            config_snapshot=config,
+            output_dir=output_dir,
+        )
+        tracker.start_run()
+        try:
+            model.learn(...)
+            tracker.end_run("COMPLETED")
+        except KeyboardInterrupt:
+            tracker.end_run("INTERRUPTED")
+            raise
+        except Exception:
+            tracker.end_run("FAILED")
+            raise
+    """
+
     def __init__(
         self,
         experiment_name: str,
         run_name: str,
-        base_dir: str = "experiments",
+        seed: int = 0,
+        phase: int = 0,
+        config_snapshot: Optional[dict[str, Any]] = None,
+        output_dir: Optional[str] = None,
+        # Legacy parameter kept for backward compat — unused
+        base_dir: Optional[str] = None,
         tag: Optional[str] = None,
-    ):
-        """Initialize experiment tracker.
-        
+    ) -> None:
+        """Initialise the tracker and create the run directory.
+
         Args:
-            experiment_name: Name of the experiment campaign (e.g., "0_foundations")
-            run_name: Name of this specific run (e.g., "exp0_baseline")
-            base_dir: Base directory for experiments
-            tag: Optional tag for grouping experiments (e.g., "SmoothMotion-ControlGains")
+            experiment_name: Experiment campaign name (e.g. "0_foundations").
+            run_name: Short descriptor used in the run_id suffix (e.g. "sac_mountaincar").
+            seed: Random seed for this run (recorded in metadata).
+            phase: Research phase number (0–4).
+            config_snapshot: Full hyperparameter config dict; deep-copied immediately so
+                later mutations by the caller do not affect stored config.
+            output_dir: Optional custom output root. Resolved via get_experiments_dir().
+            base_dir: Ignored (legacy compat).
+            tag: Ignored (legacy compat).
         """
         self.experiment_name = experiment_name
         self.run_name = run_name
-        self.tag = tag
-        self.run_id = f"{experiment_name}_{run_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-        
-        # Create directory structure
-        # If tag is provided: base_dir / experiment_name / tag / run_name
-        # Otherwise: base_dir / experiment_name / run_name
-        self.experiment_dir = Path(base_dir) / experiment_name
-        if tag:
-            self.run_dir = self.experiment_dir / tag / run_name
-        else:
-            self.run_dir = self.experiment_dir / run_name
+        self.seed = seed
+        self.phase = phase
+        self._config_snapshot: dict[str, Any] = copy.deepcopy(config_snapshot or {})
+        self._output_dir: Optional[str] = output_dir
+
+        # Generate unique run ID.
+        self.run_id = generate_run_id(suffix=run_name)
+
+        # Build run directory: {experiments_dir}/{experiment_name}/runs/{run_id}/
+        experiments_base = get_experiments_dir(output_dir)
+        self.run_dir: Path = experiments_base / experiment_name / "runs" / self.run_id
         self.run_dir.mkdir(parents=True, exist_ok=True)
-        
-        # Configuration files
-        self.env_config_file = self.run_dir / "environment_config.yaml"
-        
-        # Store experiment metadata (will be written to env_config)
-        self.config_data = {
-            "experiment_name": experiment_name,
-            "run_name": run_name,
-            "tag": tag,
-            "created_at": datetime.now().isoformat(),
-            "status": "initialized",
+
+        self._metadata_path: Path = self.run_dir / "metadata.json"
+
+        # In-memory metadata dict — written to disk on start_run() and end_run().
+        self._metadata: dict[str, Any] = {
+            "run": {},
+            "config": {},
+            "system": {},
+            "metrics": {},
+            "custom": {},
         }
-    
-    def log_params(self, params: Dict[str, Any]) -> None:
-        """Log training parameters.
-        
-        Args:
-            params: Dictionary of training parameters (seed, total_timesteps)
+
+    # ------------------------------------------------------------------
+    # Core public API
+    # ------------------------------------------------------------------
+
+    def start_run(self) -> None:
+        """Write initial metadata.json with status RUNNING.
+
+        Must be called once, before the first training step. Subsequent calls
+        are a no-op (idempotent guard against double-initialisation).
         """
-        self.config_data["training"] = params
-        logger.debug(f"Logged training params")
-    
-    def log_env_config(self, env_config: Dict[str, Any]) -> None:
-        """Log comprehensive environment configuration as YAML.
-        
-        This creates a complete experiment specification including:
-        - Environment name and algorithm
-        - Control parameters (kp, kd, etc.)
-        - Action wrapper settings (frameskip, filters)
-        - Training configuration (timesteps, seed)
-        - Experiment metadata (name, tag, description)
-        
-        This file should be sufficient to reproduce the experiment.
-        
-        Args:
-            env_config: Dictionary of environment configuration parameters
-        """
-        # Build comprehensive config
-        comprehensive_config = {
-            **self.config_data,  # experiment_name, run_name, tag, created_at, status
-            "environment": env_config.get("environment"),
-            "algorithm": env_config.get("algorithm"),
-            "control_params": env_config.get("control_params", {}),
-            "num_envs": env_config.get("num_envs"),
-            "metrics": env_config.get("metrics", {}),
+        if self._metadata["run"].get("status") == "RUNNING":
+            logger.warning("⚠ [Tracker] start_run() called again — already RUNNING, skipping.")
+            return
+
+        self._metadata["run"] = {
+            "run_id": self.run_id,
+            "experiment": self.experiment_name,
+            "seed": self.seed,
+            "phase": self.phase,
+            "status": "RUNNING",
+            "started_at": datetime.now().isoformat(),
+            "finished_at": None,
         }
-        
-        # Add training config if present
-        if "training" in self.config_data:
-            comprehensive_config["training"] = self.config_data["training"]
-        
-        # Add action wrappers if present
-        if "action_repeat" in env_config:
-            comprehensive_config["action_repeat"] = env_config["action_repeat"]
-        if "action_filter" in env_config:
-            comprehensive_config["action_filter"] = env_config["action_filter"]
-        
-        # Add description/notes if present
-        if "description" in self.config_data:
-            comprehensive_config["description"] = self.config_data["description"]
-        if "notes" in self.config_data:
-            comprehensive_config["notes"] = self.config_data["notes"]
-        
-        # Remove None values
-        comprehensive_config = {k: v for k, v in comprehensive_config.items() if v is not None}
-        
-        with open(self.env_config_file, 'w') as f:
-            yaml.dump(comprehensive_config, f, default_flow_style=False, sort_keys=False)
-        logger.success(f"Saved experiment config to {self.env_config_file}")
+        self._metadata["config"] = copy.deepcopy(self._config_snapshot)
+        self._metadata["system"] = get_system_info()
 
-    def set_computed_metrics(self, metrics_payload: Dict[str, Any]) -> None:
-        """Persist computed metrics into environment_config.yaml.
+        self._write()
+        logger.info(f"✔ [Tracker] Run started: {self.run_id} → {self._metadata_path}")
+
+    def end_run(self, status: str) -> None:
+        """Finalise metadata.json with terminal status and finished_at timestamp.
 
         Args:
-            metrics_payload: Metrics evaluation payload
-        """
-        self.config_data["computed_metrics"] = metrics_payload
-        self.config_data["metrics_updated_at"] = datetime.now().isoformat()
+            status: Terminal status — must be one of COMPLETED, INTERRUPTED, FAILED.
 
-        if self.env_config_file.exists():
-            with open(self.env_config_file, 'r') as f:
-                config = yaml.safe_load(f) or {}
-        else:
-            config = dict(self.config_data)
-
-        config["computed_metrics"] = metrics_payload
-        config["metrics_updated_at"] = self.config_data["metrics_updated_at"]
-
-        with open(self.env_config_file, 'w') as f:
-            yaml.dump(config, f, default_flow_style=False, sort_keys=False)
-    
-    def log_metrics(self, metrics: Dict[str, Any], step: Optional[int] = None) -> None:
-        """Log metrics.
-        
-        Args:
-            metrics: Dictionary of metrics
-            step: Optional timestep
-        """
-        # Load existing metrics
-        if self.metrics_file.exists():
-            with open(self.metrics_file, 'r') as f:
-                all_metrics = json.load(f)
-        else:
-            all_metrics = []
-        
-        # Add new metrics with timestamp
-        entry = {
-            "timestamp": datetime.now().isoformat(),
-            "metrics": metrics
-        }
-        if step is not None:
-            entry["step"] = step
-        
-        all_metrics.append(entry)
-        
-        # Save updated metrics
-        with open(self.metrics_file, 'w') as f:
-            json.dump(all_metrics, f, indent=4)
-    
-    def log_artifact(self, file_path: str, artifact_type: str = "file") -> None:
-        """Log a file artifact.
-        
-        Args:
-            file_path: Path to the file
-            artifact_type: Type of artifact (model, plot, etc.)
-        """
-        # Record artifact in metadata
-        if "artifacts" not in self.metadata:
-            self.metadata["artifacts"] = []
-        
-        self.metadata["artifacts"].append({
-            "type": artifact_type,
-            "path": file_path,
-            "logged_at": datetime.now().isoformat()
-        })
-        self._save_metadata()
-    
-    def set_tag(self, key: str, value: str) -> None:
-        """Add metadata tags.
-        
-        Args:
-            key: Tag key
-            value: Tag value
-        """
-        if "tags" not in self.metadata:
-            self.metadata["tags"] = {}
-        
-        self.metadata["tags"][key] = value
-        self._save_metadata()
-    
-    def set_status(self, status: str) -> None:
-        """Update experiment status.
-        
-        Args:
-            status: New status (running, completed, failed, etc.)
-        """
-        self.config_data["status"] = status
-        self.config_data["updated_at"] = datetime.now().isoformat()
-        # Re-save environment config with updated status
-        if self.env_config_file.exists():
-            with open(self.env_config_file, 'r') as f:
-                config = yaml.safe_load(f)
-            config["status"] = status
-            config["updated_at"] = self.config_data["updated_at"]
-            with open(self.env_config_file, 'w') as f:
-                yaml.dump(config, f, default_flow_style=False, sort_keys=False)
-    
-    def set_description(self, description: str, notes: str = "") -> None:
-        """Set experiment description and notes.
-        
-        Args:
-            description: Experiment description
-            notes: Optional notes
-        """
-        self.config_data["description"] = description
-        self.config_data["notes"] = notes
-    
-    def _collect_system_info(self) -> Dict[str, Any]:
-        """Collect system information for reproducibility.
-        
-        Returns:
-            Dictionary containing system information
-        """
-        system_info = {
-            "platform": platform.platform(),
-            "python_version": platform.python_version(),
-            "processor": platform.processor(),
-            "machine": platform.machine(),
-            "node": platform.node(),
-        }
-        
-        # Try to get GPU info
-        try:
-            result = subprocess.run(
-                ["nvidia-smi", "--query-gpu=name,driver_version,memory.total", 
-                 "--format=csv,noheader"],
-                capture_output=True,
-                text=True,
-                timeout=5
-            )
-            if result.returncode == 0:
-                gpu_info = result.stdout.strip().split('\n')
-                system_info["gpus"] = gpu_info
-        except (FileNotFoundError, subprocess.TimeoutExpired):
-            system_info["gpus"] = None
-        
-        # Try to get git commit
-        try:
-            result = subprocess.run(
-                ["git", "rev-parse", "HEAD"],
-                capture_output=True,
-                text=True,
-                timeout=5,
-                cwd=Path.cwd()
-            )
-            if result.returncode == 0:
-                system_info["git_commit"] = result.stdout.strip()
-        except (FileNotFoundError, subprocess.TimeoutExpired):
-            system_info["git_commit"] = None
-        
-        return system_info
-    
-    def get_run_dir(self) -> Path:
-        """Get the run directory path."""
-        return self.run_dir
-    
-    def _validate_hyperparameters(self, params: Dict[str, Any]) -> None:
-        """Validate hyperparameter structure.
-        
-        Args:
-            params: Hyperparameters to validate
-            
         Raises:
-            ValidationError: If validation fails
+            ValueError: If status is not a recognised terminal value.
         """
-        # Basic validation: ensure required fields are present
-        if not isinstance(params, dict):
-            raise ValueError("Hyperparameters must be a dictionary")
-        
-        # Check for common mistakes
-        if not params:
-            logger.warning("Empty hyperparameters dictionary")
-        
-        # Validate numeric parameters are actually numeric
-        numeric_keys = ['learning_rate', 'gamma', 'batch_size', 'buffer_size', 
-                       'tau', 'total_timesteps', 'num_envs']
-        for key in numeric_keys:
-            if key in params:
-                value = params[key]
-                if not isinstance(value, (int, float)):
-                    raise ValueError(f"Parameter '{key}' must be numeric, got {type(value)}")
-                if key in ['learning_rate', 'gamma', 'tau'] and not (0 <= value <= 1):
-                    logger.warning(f"Parameter '{key}'={value} is outside typical range [0, 1]")
-        
-        # Validate positive integers
-        positive_int_keys = ['batch_size', 'buffer_size', 'total_timesteps', 'num_envs']
-        for key in positive_int_keys:
-            if key in params:
-                value = params[key]
-                if not isinstance(value, int) or value <= 0:
-                    raise ValueError(f"Parameter '{key}' must be a positive integer, got {value}")
-        
-        logger.debug("Hyperparameter validation passed")
+        if status not in _TERMINAL_STATUSES:
+            raise ValueError(
+                f"[Tracker] Invalid status '{status}'. "
+                f"Must be one of: {sorted(_TERMINAL_STATUSES)}."
+            )
+
+        self._metadata["run"]["status"] = status
+        self._metadata["run"]["finished_at"] = datetime.now().isoformat()
+
+        self._write()
+        logger.info(f"✔ [Tracker] Run ended ({status}): {self.run_id}")
+
+        try:
+            self._append_results_index()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(f"⚠ [Tracker] Could not append results index: {exc}")
+
+        try:
+            self._write_summary_md()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(f"⚠ [Tracker] Could not write experiment_summary.md: {exc}")
+
+    def update(self, section: str, data: dict[str, Any]) -> None:
+        """Deep-merge data into a writable metadata section.
+
+        Only 'metrics' and 'custom' are writable. Attempting to write to
+        'run', 'config', or 'system' raises ValueError.
+
+        Args:
+            section: Target section name ('metrics' or 'custom').
+            data: Dict to deep-merge into the section.
+
+        Raises:
+            ValueError: If section is read-only or unknown.
+        """
+        if section in _READ_ONLY_SECTIONS:
+            raise ValueError(
+                f"[Tracker] Section '{section}' is read-only after start_run(). "
+                f"Writable sections: {sorted(_WRITABLE_SECTIONS)}."
+            )
+        if section not in _ALL_SECTIONS:
+            raise ValueError(
+                f"[Tracker] Unknown section '{section}'. "
+                f"Known sections: {sorted(_ALL_SECTIONS)}."
+            )
+        _deep_merge(self._metadata[section], data)
+        self._write()
+
+    # ------------------------------------------------------------------
+    # Accessors
+    # ------------------------------------------------------------------
+
+    def get_run_dir(self) -> Path:
+        """Return the Path to this run's output directory.
+
+        Returns:
+            Absolute Path to the run directory.
+        """
+        return self.run_dir
+
+    def get_metadata(self) -> dict[str, Any]:
+        """Return a deep copy of the current in-memory metadata dict.
+
+        Returns:
+            Deep copy of the full metadata dict (all five sections).
+        """
+        return copy.deepcopy(self._metadata)
+
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+
+    def _append_results_index(self) -> None:
+        """Append a one-line JSON summary to the shared results_index.jsonl."""
+        index_path = get_results_index_path(self._output_dir)
+        index_path.parent.mkdir(parents=True, exist_ok=True)
+
+        record = {
+            "run_id": self._metadata["run"].get("run_id", self.run_id),
+            "experiment": self._metadata["run"].get("experiment", self.experiment_name),
+            "seed": self._metadata["run"].get("seed", self.seed),
+            "phase": self._metadata["run"].get("phase", self.phase),
+            "final_reward": self._metadata["metrics"].get("final_mean_reward", None),
+            "status": self._metadata["run"].get("status", "UNKNOWN"),
+            "timestamp": self._metadata["run"].get("finished_at", datetime.now().isoformat()),
+        }
+
+        with index_path.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(record) + "\n")
+
+        logger.debug(f"✔ [Tracker] Results index updated → {index_path}")
+
+    def _write_summary_md(self) -> None:
+        """Write a pre-filled experiment_summary.md to the run directory."""
+        run = self._metadata["run"]
+        config = self._metadata["config"]
+
+        fields = {
+            "run_id": run.get("run_id", self.run_id),
+            "experiment": run.get("experiment", self.experiment_name),
+            "status": run.get("status", "UNKNOWN"),
+            "seed": run.get("seed", self.seed),
+            "phase": run.get("phase", self.phase),
+            "algorithm": config.get("algorithm", "N/A"),
+            "started_at": run.get("started_at", "N/A"),
+            "finished_at": run.get("finished_at", "N/A"),
+            "final_reward": self._metadata["metrics"].get("final_mean_reward", "N/A"),
+        }
+
+        summary_path = self.run_dir / "experiment_summary.md"
+        summary_path.write_text(
+            _SUMMARY_TEMPLATE.format_map(_SafeDict(fields)),
+            encoding="utf-8",
+        )
+        logger.debug(f"✔ [Tracker] Summary written → {summary_path}")
+
+    def _write(self) -> None:
+        """Atomically write the in-memory metadata dict to metadata.json."""
+        self._metadata_path.write_text(
+            json.dumps(self._metadata, indent=2, default=str),
+            encoding="utf-8",
+        )
+
+
+# ---------------------------------------------------------------------------
+# Module-level helpers
+# ---------------------------------------------------------------------------
+
+
+class _SafeDict(dict):
+    """dict subclass that returns 'N/A' for missing keys in str.format_map()."""
+
+    def __missing__(self, key: str) -> str:
+        return "N/A"
+
+
+def _deep_merge(target: dict[str, Any], source: dict[str, Any]) -> None:
+    """Recursively merge source into target in-place.
+
+    Nested dicts are merged; all other types are overwritten.
+
+    Args:
+        target: Dict to merge into (modified in-place).
+        source: Dict providing new/updated values.
+    """
+    for key, value in source.items():
+        if key in target and isinstance(target[key], dict) and isinstance(value, dict):
+            _deep_merge(target[key], value)
+        else:
+            target[key] = value

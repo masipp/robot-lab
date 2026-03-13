@@ -1,9 +1,10 @@
 """Training tests to verify the RL training pipeline works correctly."""
 
-import pytest
+from pathlib import Path
+
 import gymnasium as gym
 import numpy as np
-from pathlib import Path
+import pytest
 from stable_baselines3 import SAC
 from stable_baselines3.common.vec_env import VecNormalize
 
@@ -253,3 +254,59 @@ class TestModelPersistence:
         
         env.close()
         print("✓ Model loaded and used for prediction successfully")
+
+
+class TestEpic1Pipeline:
+    """End-to-end integration: all Epic 1 components wired together."""
+
+    def test_full_pipeline_artifacts(self, temp_output_dir: Path, test_seed: int) -> None:
+        """Short training run must produce all Epic 1 artifacts.
+
+        Verifies: ExperimentTracker metadata.json (5 sections), experiment_summary.md,
+        results_index.jsonl, and best_model.zip + best_model_vecnorm.pkl pair.
+        """
+        import json as _json
+
+        train(
+            env_name="MountainCarContinuous-v0",
+            algorithm="SAC",
+            seed=test_seed,
+            output_dir=str(temp_output_dir),
+            eval_freq=5000,
+            eval_episodes=3,
+            use_checkpoints=False,
+            total_timesteps=10000,
+        )
+
+        # --- ExperimentTracker artifacts ---
+        exp_runs = list((temp_output_dir / "experiments").glob("*/runs/*"))
+        assert len(exp_runs) >= 1, "ExperimentTracker run directory not created"
+        tracker_run_dir = exp_runs[0]
+
+        metadata_path = tracker_run_dir / "metadata.json"
+        assert metadata_path.exists(), "metadata.json not written by ExperimentTracker"
+
+        metadata = _json.loads(metadata_path.read_text(encoding="utf-8"))
+        for section in ("run", "config", "system", "metrics", "custom"):
+            assert section in metadata, f"metadata.json missing section: {section}"
+        assert metadata["run"]["status"] == "COMPLETED"
+
+        # --- experiment_summary.md ---
+        summary_path = tracker_run_dir / "experiment_summary.md"
+        assert summary_path.exists(), "experiment_summary.md not written"
+
+        # --- results_index.jsonl ---
+        index_path = temp_output_dir / "experiments" / "results_index.jsonl"
+        assert index_path.exists(), "results_index.jsonl not created"
+        lines = index_path.read_text(encoding="utf-8").strip().splitlines()
+        assert len(lines) >= 1, "results_index.jsonl is empty"
+        record = _json.loads(lines[0])
+        assert record["status"] == "COMPLETED"
+
+        # --- Atomic best-model pair (from RobotLabEvalCallback) ---
+        best_dir = temp_output_dir / "models" / "best"
+        assert (best_dir / "best_model.zip").exists(), "best_model.zip not saved"
+        assert (best_dir / "best_model_vecnorm.pkl").exists(), "best_model_vecnorm.pkl not saved"
+
+        print("✓ All Epic 1 pipeline artifacts verified")
+

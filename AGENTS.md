@@ -605,8 +605,9 @@ robot-lab visualize --env MountainCarContinuous-v0 --algo SAC        # Verify po
 
 ### Linting
 ```bash
-ruff check robot_lab/
-ruff format robot_lab/
+uv tool run ruff check robot_lab/ tests/
+uv tool run ruff format robot_lab/ tests/
+uv tool run ruff check --fix robot_lab/ tests/
 ```
 
 ## Code Conventions

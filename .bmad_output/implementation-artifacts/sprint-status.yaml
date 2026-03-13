@@ -1,0 +1,86 @@
+# generated: 2026-03-13
+# project: robot-lab
+# project_key: NOKEY
+# tracking_system: file-system
+# story_location: .bmad_output/implementation-artifacts
+
+# STATUS DEFINITIONS:
+# ==================
+# Epic Status:
+#   - backlog: Epic not yet started
+#   - in-progress: Epic actively being worked on
+#   - done: All stories in epic completed
+#
+# Epic Status Transitions:
+#   - backlog → in-progress: Automatically when first story is created (via create-story)
+#   - in-progress → done: Manually when all stories reach 'done' status
+#
+# Story Status:
+#   - backlog: Story only exists in epic file
+#   - ready-for-dev: Story file created in stories folder
+#   - in-progress: Developer actively working on implementation
+#   - review: Ready for code review (via Dev's code-review workflow)
+#   - done: Story completed
+#
+# Retrospective Status:
+#   - optional: Can be completed but not required
+#   - done: Retrospective has been completed
+#
+# WORKFLOW NOTES:
+# ===============
+# - Epic transitions to 'in-progress' automatically when first story is created
+# - Stories can be worked in parallel if team capacity allows
+# - SM typically creates next story after previous one is 'done' to incorporate learnings
+# - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
+
+generated: 2026-03-13
+project: robot-lab
+project_key: NOKEY
+tracking_system: file-system
+story_location: .bmad_output/implementation-artifacts
+
+development_status:
+  epic-1: in-progress
+  1-1-plugin-registry-infrastructure: review
+  1-2-consolidated-experiment-metadata-schema: review
+  1-3-atomic-model-vecnorm-checkpointing: review
+  # Story 1.3 completed 2026-03-13: RobotLabCheckpointCallback + RobotLabEvalCallback; 73/73 tests passing
+  1-4-results-index-experiment-summary-template: review
+  # Story 1.4 completed 2026-03-13: JSONL results index + experiment_summary.md; 77/77 tests passing
+  1-5-end-to-end-training-pipeline-smoke-test: review
+  # Story 1.5 completed 2026-03-13: Global seed setting + Epic 1 e2e integration test; passes in 63s
+  epic-1-retrospective: optional
+
+  epic-2: done
+  2-1-actionfilterwrapper-scaffold: review
+  # Story 2.1 completed 2026-03-13: RobotLabWrapperMixin + ActionFilterWrapper scaffold; 89/89 tests passing
+  2-2-smoothness-metric-plugin: review
+  # Story 2.2 completed 2026-03-13: ActionSmoothnessMetricPlugin + PluginRegistry dispatch; 97/97 tests passing
+  2-3-video-render-pipeline: review
+  # Story 2.3 completed 2026-03-13: visualize() with imageio MP4, --record-video CLI flag; 100/100 tests passing
+  epic-2-retrospective: optional
+
+  epic-3: backlog
+  3-1-resultsdatabase-phase-query: backlog
+  3-2-results-cli-command-csv-export: backlog
+  3-3-multi-seed-experiment-runner: backlog
+  3-4-variance-band-plot-generation: backlog
+  epic-3-retrospective: optional
+
+  epic-4: backlog
+  4-1-robotlabcallbackmixin-curriculumcallback-scaffold: backlog
+  4-2-curriculum-callback-unit-test-harness: backlog
+  4-3-curriculum-stage-metrics-in-tensorboard: backlog
+  epic-4-retrospective: optional
+
+  epic-5: backlog
+  5-1-goalconditionedwrapper-scaffold: backlog
+  5-2-zero-shot-evaluation-harness: backlog
+  5-3-domainrandomizationwrapper-scaffold: backlog
+  5-4-curriculum-dr-combo-runner: backlog
+  epic-5-retrospective: optional
+
+  epic-6: backlog
+  6-1-perturbation-sweep-runner-degradation-curve: backlog
+  6-2-gazebo-eval-cli-conditional-ros2-import: backlog
+  epic-6-retrospective: optional

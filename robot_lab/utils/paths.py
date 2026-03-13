@@ -1,6 +1,5 @@
 """Path utilities for managing user data directories."""
 
-import os
 from pathlib import Path
 from typing import Optional
 
@@ -65,6 +64,21 @@ def get_experiments_dir(custom_dir: Optional[str] = None) -> Path:
     experiments_dir = get_user_data_dir(custom_dir) / "experiments"
     experiments_dir.mkdir(parents=True, exist_ok=True)
     return experiments_dir
+
+
+def get_results_index_path(custom_dir: Optional[str] = None) -> Path:
+    """Return the path to the JSONL results index file.
+
+    The file is NOT created — callers are responsible for opening it in
+    append mode.  This intentional design prevents any disk write on import.
+
+    Args:
+        custom_dir: Optional custom output root (same as other path helpers).
+
+    Returns:
+        Path to ``data/experiments/results_index.jsonl``.
+    """
+    return get_user_data_dir(custom_dir) / "experiments" / "results_index.jsonl"
 
 def get_graphs_dir(custom_dir: Optional[str] = None) -> Path:
     """Get the graphs directory.

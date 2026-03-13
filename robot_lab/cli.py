@@ -1,20 +1,22 @@
 """Command-line interface for robot_lab."""
 
-import typer
-from typing import Optional
 from pathlib import Path
+from typing import Optional
+
+import typer
+from loguru import logger
 from rich import print as rprint
 from rich.console import Console
 from rich.table import Table
-from loguru import logger
 
+from robot_lab.envs import EnvCategory, EnvDifficulty, get_env_registry
 from robot_lab.training import train as train_agent
-from robot_lab.visualization import visualize_policy
-from robot_lab.utils.logger import configure_logger
 from robot_lab.utils.debug_config import load_debug_config
+from robot_lab.utils.logger import configure_logger
 from robot_lab.utils.paths import get_logs_dir
-from robot_lab.utils.run_selector import list_training_runs, format_run_option, get_full_env_name
-from robot_lab.envs import get_env_registry, get_env_info, EnvCategory, EnvDifficulty
+from robot_lab.utils.run_selector import format_run_option, get_full_env_name, list_training_runs
+from robot_lab.visualization import visualize as record_policy
+from robot_lab.visualization import visualize_policy
 
 app = typer.Typer(
     name="robot-lab",
@@ -236,6 +238,11 @@ def visualize(
         "-d",
         help="Load parameters from debug config file (e.g., 'visualize_walker2d_sac')"
     ),
+    record_video: bool = typer.Option(
+        True,
+        "--record-video/--no-record-video",
+        help="Record an MP4 video of the policy rollout"
+    ),
 ):
     """Visualize a trained policy."""
     
@@ -341,23 +348,36 @@ def visualize(
     table.add_row("Episodes", str(episodes))
     table.add_row("Render", "No" if no_render else "Yes")
     table.add_row("Save Plot", "No" if no_plot else "Yes")
+    table.add_row("Record Video", "Yes" if record_video else "No")
     
     console.print(table)
     console.print()
     
     try:
-        # Run visualization
-        rewards, lengths = visualize_policy(
-            env_name=env,
-            algorithm=algo,
-            model_path=str(model_path) if model_path else None,
-            vecnorm_path=str(vecnorm_path) if vecnorm_path else None,
-            env_config_path=str(env_config) if env_config else None,
-            num_episodes=episodes,
-            render=not no_render,
-            save_plot=not no_plot,
-            output_dir=str(output_dir) if output_dir else None,
-        )
+        if record_video and model_path and vecnorm_path:
+            mp4_path = record_policy(
+                env_name=env,
+                algorithm=algo,
+                model_path=str(model_path),
+                vecnorm_path=str(vecnorm_path),
+                output_dir=str(output_dir) if output_dir else None,
+                num_episodes=episodes,
+                record_video=True,
+            )
+            if mp4_path:
+                rprint(f"[bold green]✓ Video saved:[/bold green] {mp4_path}")
+        else:
+            visualize_policy(
+                env_name=env,
+                algorithm=algo,
+                model_path=str(model_path) if model_path else None,
+                vecnorm_path=str(vecnorm_path) if vecnorm_path else None,
+                env_config_path=str(env_config) if env_config else None,
+                num_episodes=episodes,
+                render=not no_render,
+                save_plot=not no_plot,
+                output_dir=str(output_dir) if output_dir else None,
+            )
         
         logger.success("Visualization completed successfully!")
         
@@ -540,7 +560,7 @@ def list_envs(
     
     console.print(table)
     console.print(f"\n[dim]Total: {len(envs)} environments[/dim]")
-    console.print(f"[dim]Use 'robot-lab env-info --env <ENV_ID>' for detailed information[/dim]\n")
+    console.print("[dim]Use 'robot-lab env-info --env <ENV_ID>' for detailed information[/dim]\n")
 
 
 @app.command()
@@ -600,7 +620,7 @@ def env_info(
     console.print(info_table)
     
     # Show example training command
-    console.print(f"\n[bold]Example Training Command:[/bold]")
+    console.print("\n[bold]Example Training Command:[/bold]")
     console.print(f"  [cyan]robot-lab train --env {metadata.env_id} --algo {metadata.default_algorithm}[/cyan]\n")
 
 
@@ -698,7 +718,7 @@ def run_experiment_cmd(
         
         # Print untagged experiments
         if no_tag:
-            console.print(f"[bold yellow]Untagged:[/bold yellow]")
+            console.print("[bold yellow]Untagged:[/bold yellow]")
             for exp_id, exp_config in no_tag:
                 enabled = exp_config.get("enabled", True)
                 status_icon = "✓" if enabled else "✗"
@@ -718,27 +738,27 @@ def run_experiment_cmd(
     try:
         if experiment_id:
             if dry_run:
-                console.print(f"\n[bold cyan]Dry Run - Experiment Plan:[/bold cyan]\n")
+                console.print("\n[bold cyan]Dry Run - Experiment Plan:[/bold cyan]\n")
                 runner._print_experiment_plan(experiment_id)
             else:
                 console.print(f"\n[bold green]Running Experiment: {experiment_id}[/bold green]\n")
                 runner.run_experiment(experiment_id)
         else:
             if dry_run:
-                console.print(f"\n[bold cyan]Dry Run - Full Campaign Plan:[/bold cyan]\n")
+                console.print("\n[bold cyan]Dry Run - Full Campaign Plan:[/bold cyan]\n")
             else:
-                console.print(f"\n[bold green]Running Experiment Campaign[/bold green]\n")
+                console.print("\n[bold green]Running Experiment Campaign[/bold green]\n")
             
             results = runner.run_all(dry_run=dry_run)
             
             if not dry_run:
                 # Print summary
-                console.print(f"\n[bold]Campaign Complete![/bold]")
+                console.print("\n[bold]Campaign Complete![/bold]")
                 successes = sum(1 for success in results.values() if success)
                 console.print(f"  Success: {successes}/{len(results)}")
                 
                 if successes < len(results):
-                    console.print(f"\n[bold red]Failed Experiments:[/bold red]")
+                    console.print("\n[bold red]Failed Experiments:[/bold red]")
                     for exp_id, success in results.items():
                         if not success:
                             console.print(f"  ✗ {exp_id}")

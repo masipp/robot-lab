@@ -1,22 +1,104 @@
 """Policy visualization functionality for robot_lab."""
 
-import gymnasium as gym
-import numpy as np
-import matplotlib.pyplot as plt
-from stable_baselines3 import PPO, SAC
-from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 from pathlib import Path
-from typing import Optional, Tuple, List, Dict, Any
+from typing import Any, Dict, List, Optional, Tuple
+
+import gymnasium as gym
+import matplotlib.pyplot as plt
+import numpy as np
 from loguru import logger
 from rich.console import Console
 from rich.table import Table
+from stable_baselines3 import PPO, SAC
+from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 
-from robot_lab.utils.paths import get_models_dir, get_logs_dir
-from robot_lab.utils.run_utils import generate_run_id, cleanup_old_runs
-from robot_lab.utils.metadata import save_visualization_metadata, update_visualization_results
 from robot_lab.envs import get_env_registry
+from robot_lab.utils.metadata import save_visualization_metadata, update_visualization_results
+from robot_lab.utils.paths import get_logs_dir, get_models_dir
+from robot_lab.utils.run_utils import cleanup_old_runs, generate_run_id
 
 console = Console()
+
+
+def visualize(
+    env_name: str,
+    algorithm: str,
+    model_path: str,
+    vecnorm_path: str,
+    output_dir: Optional[str] = None,
+    num_episodes: int = 1,
+    record_video: bool = True,
+) -> Optional[Path]:
+    """Run a trained policy and optionally record an MP4 video.
+
+    Args:
+        env_name: Gymnasium environment name (e.g. "MountainCarContinuous-v0").
+        algorithm: Algorithm name ("SAC" or "PPO").
+        model_path: Path to the saved model zip.
+        vecnorm_path: Path to the VecNormalize stats pkl.
+        output_dir: Root directory for output (defaults to cwd).
+        num_episodes: Number of episodes to record.
+        record_video: When False, runs without recording and returns None.
+
+    Returns:
+        Path to the MP4 file, or None when record_video is False.
+
+    Raises:
+        ValueError: If vecnorm_path does not exist.
+    """
+    import imageio.v2 as iio
+
+    vecnorm_path_obj = Path(vecnorm_path)
+    model_path_obj = Path(model_path)
+
+    if not vecnorm_path_obj.exists():
+        raise ValueError(
+            f"[Visualize] VecNorm stats file not found at {vecnorm_path_obj}. "
+            "Ensure model and VecNorm were saved as a pair."
+        )
+
+    env_base_name = env_name.split("-")[0].lower()
+    algo_name = algorithm.lower()
+
+    base_out = Path(output_dir) if output_dir else Path.cwd()
+    video_dir = base_out / "videos" / f"{algo_name}_{env_base_name}"
+    video_dir.mkdir(parents=True, exist_ok=True)
+
+    base_env = gym.make(env_name, render_mode="rgb_array")
+    eval_env = DummyVecEnv([lambda env=base_env: env])
+    eval_env = VecNormalize.load(str(vecnorm_path_obj), eval_env)
+    eval_env.training = False
+    eval_env.norm_reward = False
+
+    algo_cls = SAC if algo_name == "sac" else PPO
+    model = algo_cls.load(str(model_path_obj), env=eval_env)
+
+    frames: List[Any] = []
+    obs = eval_env.reset()
+    if record_video:
+        frame = base_env.render()
+        if frame is not None:
+            frames.append(frame)
+
+    episodes_done = 0
+    while episodes_done < num_episodes:
+        action, _ = model.predict(obs, deterministic=True)
+        obs, _, dones, _ = eval_env.step(action)
+        if record_video:
+            frame = base_env.render()
+            if frame is not None:
+                frames.append(frame)
+        if dones[0]:
+            episodes_done += 1
+
+    eval_env.close()
+
+    if not record_video or not frames:
+        return None
+
+    video_path = video_dir / f"{algo_name}_{env_base_name}.mp4"
+    iio.mimsave(str(video_path), frames, fps=30)
+    return video_path
 
 
 def load_training_evaluations(run_dir: Path) -> Optional[Dict[str, Any]]:
@@ -138,7 +220,7 @@ def visualize_policy(
                 logger.info(f"Auto-detected model from latest run: {training_run_dir.name}")
             else:
                 raise FileNotFoundError(
-                    f"No model found. Train a model first or specify --model-path"
+                    "No model found. Train a model first or specify --model-path"
                 )
     else:
         # If model path was provided, try to infer the training run directory
@@ -336,7 +418,7 @@ def visualize_policy(
         episode_rewards=episode_rewards,
         episode_lengths=episode_lengths,
     )
-    logger.info(f"Updated metadata with results")
+    logger.info("Updated metadata with results")
     
     return episode_rewards, episode_lengths, training_eval
 

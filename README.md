@@ -1,287 +1,234 @@
 # robot-lab
 
-A reinforcement learning playground for robotic environments with experiment automation and AI-driven research capabilities.
+A reinforcement learning research playground built on Stable-Baselines3 and Gymnasium.  
+Designed for rapid experimentation, systematic curriculum learning research, and sim2real transfer work — all runnable on consumer hardware (GTX 1080 / CUDA 12.6).
 
 ## Features
 
-✅ **Modern Package Structure**: Installable with `uv` or `pip`  
-✅ **CLI Interface**: Train and visualize with simple commands (powered by Typer)  
-✅ **Multiple Algorithms**: SAC (continuous) and PPO (discrete & continuous)  
-✅ **Parallel Training**: Multi-environment vectorization for speed  
-✅ **Experiment Automation**: JSON-based experiment campaigns with reproducibility  
-✅ **Comprehensive Tracking**: JSON-based experiment database with metadata  
-✅ **AI Planner (Groundwork)**: Foundation for AI-driven experiment design  
-✅ **Custom Environments**: Gripper control and quadruped locomotion  
-✅ **TensorBoard Integration**: Real-time training monitoring  
+- **CLI Interface** — `train`, `visualize`, `tensorboard`, `info` commands via Typer
+- **Algorithms** — SAC (continuous) and PPO (discrete & continuous)
+- **Parallel Training** — `SubprocVecEnv` with configurable workers; `DummyVecEnv` for evaluation
+- **Video Recording** — `robot-lab visualize --record-video` writes MP4 via imageio/ffmpeg
+- **Action Wrappers** — `ActionFilterWrapper` base class for custom action post-processing
+- **Smoothness Metrics** — `ActionSmoothnessMetricPlugin` tracks ∑‖aₜ−aₜ₋₁‖² per episode automatically
+- **TensorBoard Integration** — metrics logged during training, launchable via CLI
+- **Experiment Tracking** — JSON-based per-run metadata, hyperparameters, system info, and metrics
+- **Config Hierarchy** — `{env}_{algo}.json` → `default_{algo}.json` → `default.json` fallback chain
+- **Custom Environments** — `GripperEnv-v0`, `A1Quadruped-v0` (requires `robot_descriptions`)
+- **Reproducibility** — seed propagation, git commit capture, VecNorm stats saved alongside every model
 
 ## Installation
 
-### Quick Start with Makefile (Recommended)
+### Prerequisites
 
-**For GTX 1080 (default configuration):**
+- Python 3.12+
+- [uv](https://docs.astral.sh/uv/) (recommended) or pip
+- NVIDIA GPU with appropriate driver (see [docs/setup/GPU_SETUP.md](docs/setup/GPU_SETUP.md))
 
-```bash
-# Install everything (includes PyTorch 2.9.1+cu126)
-make install
-
-# Verify GPU setup
-make verify-gpu
-```
-
-**For other GPUs:**
+### Quick Start (GTX 1080 / CUDA 12.6)
 
 ```bash
-# Install core dependencies first
-make install
-
-# Then install PyTorch for your GPU
-make install-torch-cuda126    # For RTX 20xx/30xx/40xx (latest PyTorch)
-make install-torch-cpu        # For CPU only
-
-# Verify
-make verify-gpu
-```
-
-### Manual Installation
-
-#### Using uv (recommended)
-
-```bash
-# Install everything (GTX 1080 configuration)
+git clone <repo>
+cd robot-lab
 uv sync
-
-# For other GPUs, update pyproject.toml first (see GPU Setup below)
+make verify-gpu
 ```
 
-### Using pip
+### Other GPU Configurations
 
 ```bash
-# Install in editable mode
-pip install -e .
+# RTX 20xx/30xx/40xx (CUDA 12.6, latest PyTorch)
+make install-torch-cuda126
 
-# Or with development dependencies
-pip install -e ".[dev,robot-descriptions]"
+# CPU only
+make install-torch-cpu
 ```
 
-### GPU Setup (Important!)
-
-**Default Configuration: GTX 1080 (PyTorch 2.9.1+cu126)**
-
-The project is configured by default for GTX 1080 with PyTorch 2.9.1+cu126. Simply run:
-
-```bash
-make install && make verify-gpu
-```
-
-Or with uv directly:
-
-```bash
-uv sync && .venv/bin/python docs/verify_gpu_setup.py
-```
-
-**For RTX series or other GPUs:**
-
-Use the Makefile shortcuts to reinstall PyTorch:
-
-```bash
-make install-torch-cuda126    # RTX series (latest PyTorch)
-make install-torch-cpu        # CPU only
-```
-
-Or manually update [pyproject.toml](pyproject.toml):
+To use a different CUDA version, edit the index URL in `pyproject.toml`:
 
 ```toml
-# Change these versions and CUDA variant
-dependencies = [
-    # ... other deps ...
-    "torch==2.5.0",           # Latest version for RTX
-    "torchvision==0.20.0",
-]
-
-# Update the index URL
 [[tool.uv.index]]
-name = "pytorch-cu126"
-url = "https://download.pytorch.org/whl/cu126"  # Or cu121, cu118, cpu
+url = "https://download.pytorch.org/whl/cu118"  # e.g. cu118, cu121, cu126
 ```
 
-Then reinstall:
+Then reinstall: `uv sync --reinstall-package torch`
 
-```bash
-uv sync --reinstall-package torch
-```
+📖 Full GPU setup instructions: [docs/setup/GPU_SETUP.md](docs/setup/GPU_SETUP.md)
 
-📖 **See [docs/GPU_SETUP.md](docs/GPU_SETUP.md) for detailed GPU setup instructions**, including:
-- How to check your GPU compute capability
-- PyTorch version compatibility matrix
-- Troubleshooting common issues
-- Driver installation guide
+---
 
 ## Quick Start
 
-### Basic Training
-
-Train a SAC agent on Walker2d:
+### Train
 
 ```bash
-robot-lab train --env Walker2d-v5 --algo SAC
+# Smoke test (fast, CPU-friendly)
+robot-lab train --env MountainCarContinuous-v0 --algo SAC --seed 42
+
+# Full locomotion run
+robot-lab train --env Walker2d-v5 --algo SAC --seed 42 \
+  --eval-freq 10000 --eval-episodes 10 \
+  --output-dir data/experiments/walker2d_baseline
 ```
 
-Train with custom configuration:
+### Visualize & Record Video
 
 ```bash
-robot-lab train --env HalfCheetah-v5 --algo SAC \
-  --config my_config.json \
-  --seed 123 \
-  --output-dir ./my_experiment
+robot-lab visualize \
+  --env Walker2d-v5 --algo SAC \
+  --model-path data/experiments/walker2d_baseline/models/sac_walker2d_parallel.zip \
+  --vecnorm-path data/experiments/walker2d_baseline/models/sac_walker2d_vecnorm.pkl \
+  --record-video
+
+# Watch live without recording
+robot-lab visualize --env Walker2d-v5 --algo SAC --no-record-video
 ```
 
-### Visualizing Policies
-
-Visualize a trained policy:
+### TensorBoard
 
 ```bash
-robot-lab visualize --env Walker2d-v5 --algo SAC
+robot-lab tensorboard --logdir data/experiments/walker2d_baseline/logs
+robot-lab tensorboard --logdir data/experiments/   # compare all runs
 ```
 
-Run without rendering (headless):
-
-```bash
-robot-lab visualize --env Walker2d-v5 --algo SAC --no-render
-```
-
-### TensorBoard Monitoring
-
-Launch TensorBoard to view training progress:
-
-```bash
-robot-lab tensorboard --logdir logs --port 6006
-```
-
-### Get Information
-
-Display available commands and environments:
+### Environment & Command Info
 
 ```bash
 robot-lab info
 ```
 
+📖 **Full walkthrough**: [docs/general/getting_started.md](docs/general/getting_started.md)
+
+---
+
 ## Project Structure
 
 ```
 robot-lab/
-├── src/robot_lab/              # Main package
-│   ├── __init__.py
-│   ├── cli.py                  # Command-line interface
-│   ├── training.py             # Core training logic
-│   ├── visualization.py        # Policy visualization
-│   ├── config.py               # Configuration management
-│   ├── configs/                # Hyperparameter JSON files
+├── robot_lab/                  # Main package
+│   ├── cli.py                  # Typer CLI entry point
+│   ├── training.py             # Training pipeline (SubprocVecEnv, callbacks)
+│   ├── visualization.py        # visualize() MP4 recording; visualize_policy() plots
+│   ├── config.py               # Config hierarchy loader (importlib.resources)
+│   ├── wrappers.py             # ActionFilterWrapper base class + built-in filters
+│   ├── configs/                # Bundled hyperparameter JSON files
+│   │   ├── default.json
 │   │   ├── default_sac.json
 │   │   ├── default_ppo.json
 │   │   ├── walker2d_sac.json
 │   │   └── ...
-│   ├── envs/                   # Custom environments
+│   ├── envs/                   # Custom environment registration
 │   │   ├── __init__.py
-│   │   ├── gripper.py
-│   │   └── locomotion/
-│   │       └── quadruped.py
-│   ├── experiments/            # Experiment automation
-│   │   ├── __init__.py
-│   │   ├── schemas.py          # Pydantic models
-│   │   ├── tracker.py          # Experiment tracking
-│   │   ├── results_db.py       # JSON database
-│   │   ├── spec_templates.py   # Example specs
-│   │   └── ai_planner.py       # AI planner (stub)
+│   │   ├── registry.py
+│   │   ├── locomotion/         # A1Quadruped
+│   │   └── manipulation/       # GripperEnv
+│   ├── experiments/            # Tracking & automation
+│   │   ├── __init__.py         # ExperimentTracker, ResultsDatabase, get_template
+│   │   ├── schemas.py          # Pydantic experiment spec models
+│   │   ├── tracker.py          # Per-run JSON tracking
+│   │   ├── results_db.py       # Aggregation & query
+│   │   ├── spec_templates.py   # hyperparam_sweep, algorithm_comparison, quick_test
+│   │   ├── ai_planner.py       # Stub for future LLM-driven experiment generation
+│   │   └── plugins/            # Metric & metadata plugin system
+│   │       ├── __init__.py     # PluginRegistry with on_step/on_episode_end/on_eval
+│   │       ├── base.py         # MetricsPlugin, MetadataPlugin ABC
+│   │       └── defaults.py     # Built-in plugins (reward, smoothness, system info)
 │   └── utils/
-│       ├── __init__.py
-│       └── paths.py            # Path utilities
+│       ├── paths.py            # get_models_dir, get_logs_dir (respects --output-dir)
+│       └── ...
+├── experiments/                # Experiment documentation (tracked in git)
+│   ├── README.md
+│   └── 0_foundations/
+│       ├── 001_smooth_locomotion.md
+│       └── configs/            # Per-experiment environment YAML overrides
+├── data/                       # All runtime output (git-ignored)
+│   └── experiments/            # Training outputs, models, logs, videos
 ├── docs/
-│   └── experiment_schema.md    # Experiment spec documentation
-├── experiments/                # Experiment outputs (git-ignored)
-├── models/                     # Trained models (git-ignored)
-├── logs/                       # TensorBoard logs (git-ignored)
-├── pyproject.toml              # Project configuration
-└── README.md
+│   ├── general/
+│   │   ├── getting_started.md  # ← Start here
+│   │   ├── experiment_schema.md
+│   │   ├── adding_environments.md
+│   │   └── metadata_system.md
+│   ├── setup/
+│   │   └── GPU_SETUP.md
+│   └── user/
+│       ├── PLAN.md             # 40-week research roadmap
+│       └── TODO.md             # Current sprint goals
+├── tests/
+├── pyproject.toml
+└── Makefile
 ```
+
+---
 
 ## Supported Environments
 
-### Built-in Gymnasium/MuJoCo
-- **Walker2d-v5**: Bipedal walking robot
-- **HalfCheetah-v5**: 2D running cheetah
-- **MountainCarContinuous-v0**: Continuous mountain car
+### Gymnasium / MuJoCo (Built-in)
+
+| Environment | Algorithm | Notes |
+|---|---|---|
+| `MountainCarContinuous-v0` | SAC | Fast smoke test (~30s) |
+| `Walker2d-v5` | SAC | Phase 0 locomotion baseline |
+| `HalfCheetah-v5` | SAC | Speed-focused locomotion |
+| `Hopper-v5` | SAC | Single-leg stability |
+| `Ant-v5` | SAC | Quadruped (simplified) |
+| `CartPole-v1` | PPO | Classic discrete baseline |
 
 ### Custom Environments
-- **GripperEnv-v0**: MuJoCo gripper control
-- **A1Quadruped-v0**: Unitree A1 quadruped locomotion (requires `robot_descriptions`)
 
-## Supported Algorithms
+| Environment | Notes |
+|---|---|
+| `A1Quadruped-v0` | Unitree A1 — requires `uv sync --extra robot-descriptions` |
+| `GripperEnv-v0` | MuJoCo gripper manipulation |
+
+---
+
+## Algorithms
 
 | Algorithm | Action Space | Description |
-|-----------|-------------|-------------|
-| **SAC** | Continuous only | Soft Actor-Critic - Sample efficient, off-policy |
-| **PPO** | Discrete & Continuous | Proximal Policy Optimization - Stable, on-policy |
+|---|---|---|
+| **SAC** | Continuous | Soft Actor-Critic — off-policy, sample efficient, entropy-regularised |
+| **PPO** | Discrete & Continuous | Proximal Policy Optimization — on-policy, stable, easy to tune |
 
-## Experiment Automation
+---
 
-### Using Templates
+## Output Files
 
-Create experiments from templates:
+Each training run writes:
 
-```python
-from robot_lab.experiments import get_template
-import json
-
-# Get hyperparameter sweep template
-spec = get_template("hyperparam_sweep")
-
-# Customize
-spec["experiment_metadata"]["name"] = "my_sac_sweep"
-spec["environments"] = [{"name": "HalfCheetah-v5", "config_overrides": {}}]
-
-# Save
-with open("my_experiment.json", "w") as f:
-    json.dump(spec, f, indent=2)
+```
+{output_dir}/
+├── models/
+│   ├── {algo}_{env}_parallel.zip      ← model (always paired with vecnorm)
+│   ├── {algo}_{env}_vecnorm.pkl       ← VecNormalize stats
+│   └── best/best_model.zip            ← best eval checkpoint
+├── logs/
+│   └── {algo}_{env}_parallel/         ← TensorBoard event files
+├── experiments/
+│   └── {name}/runs/{run_id}/
+│       ├── metadata.json              ← git commit, timestamps, env info
+│       ├── metrics.json               ← reward, episode length, smoothness series
+│       ├── hyperparameters.json
+│       └── system_info.json
+└── videos/
+    └── {algo}_{env}/
+        └── {algo}_{env}.mp4           ← recorded rollout (--record-video)
 ```
 
-Available templates:
-- `hyperparam_sweep`: Systematic hyperparameter search
-- `algorithm_comparison`: Compare multiple algorithms
-- `quick_test`: Fast test run with minimal training
+> **Note**: `model.zip` and `vecnorm.pkl` are always saved as a pair. `visualize` raises a `ValueError` if the vecnorm file is missing.
 
-### Experiment Tracking
-
-Track experiments with JSON-based metadata:
-
-```python
-from robot_lab.experiments import ExperimentTracker
-
-tracker = ExperimentTracker("my_experiment", "run_001")
-tracker.log_params({"learning_rate": 0.001, "batch_size": 256})
-tracker.log_metrics({"reward": 150.0, "episode_length": 500}, step=10000)
-tracker.set_status("completed")
-```
-
-### Results Database
-
-Store and query results:
-
-```python
-from robot_lab.experiments import ResultsDatabase
-
-db = ResultsDatabase()
-best_run = db.get_best_run("my_experiment", metric="final_mean_reward")
-stats = db.get_statistics("my_experiment")
-print(f"Mean reward: {stats['mean']:.2f} ± {stats['std']:.2f}")
-```
+---
 
 ## Configuration Files
 
-Hyperparameters are defined in JSON files under `src/robot_lab/configs/`:
+Hyperparameters live in `robot_lab/configs/`. Lookup order for e.g. `Walker2d-v5` + SAC:
+
+1. `walker2d_sac.json` (env-specific)
+2. `default_sac.json` (algorithm defaults)
+3. `default.json` (universal fallback)
 
 ```json
 {
-  "environment": "Walker2d-v5",
   "algorithm": "SAC",
   "num_envs": 8,
   "total_timesteps": 350000,
@@ -289,191 +236,121 @@ Hyperparameters are defined in JSON files under `src/robot_lab/configs/`:
     "policy": "MlpPolicy",
     "learning_rate": 0.001,
     "buffer_size": 300000,
-    "batch_size": 256,
-    ...
+    "batch_size": 256
   },
   "vec_normalize": {
     "norm_obs": true,
-    "norm_reward": true,
-    ...
+    "norm_reward": true
   }
 }
 ```
 
-See `docs/experiment_schema.md` for complete documentation.
+Pass a custom config with `--config my_overrides.json`. Full schema: [docs/general/experiment_schema.md](docs/general/experiment_schema.md).
 
-## AI-Driven Experimentation (Future)
+---
 
-The `AIExperimentPlanner` class provides groundwork for AI-driven research:
+## Plugin System
+
+Plugins collect metrics and metadata automatically during training without touching training code.
+
+| Plugin | Registry | What it does |
+|---|---|---|
+| `BasicRewardLogPlugin` | `metrics` | Logs episode reward to TensorBoard and tracker |
+| `ActionSmoothnessMetricPlugin` | `metrics` | Tracks ∑‖aₜ−aₜ₋₁‖² → `smoothness/action_delta_norm` in TensorBoard |
+| `SystemMetadataPlugin` | `metadata` | Captures GPU info, Python version, git commit at run start |
+
+Adding a plugin:
 
 ```python
-# Future capability (stub implementation)
-from robot_lab.experiments import AIExperimentPlanner
+from robot_lab.experiments.plugins.base import MetricsPlugin
+from robot_lab.experiments.plugins import get_plugin_registry
 
-planner = AIExperimentPlanner()
+class MyPlugin(MetricsPlugin):
+    def on_step(self, context: dict) -> None:
+        pass  # context: actions, observations, rewards, dones, sb3_logger, tracker
 
-# Generate experiment from natural language
-spec = planner.generate_from_natural_language(
-    "Compare SAC and PPO on locomotion tasks with 5 seeds each"
-)
-
-# Adaptive experiment design
-spec = planner.design_adaptive_experiment(
-    environment="Walker2d-v5",
-    algorithm="SAC",
-    budget_hours=24
-)
+get_plugin_registry("metrics").register(MyPlugin())
 ```
+
+---
+
+## Action Wrappers
+
+`ActionFilterWrapper` is a base class for applying custom post-processing to policy outputs:
+
+```python
+from robot_lab.wrappers import ActionFilterWrapper
+
+class MyFilter(ActionFilterWrapper):
+    def _apply_filter(self, action):
+        # your filtering logic here
+        return action
+```
+
+Built-in wrappers: `ActionRepeatWrapper`, `ExponentialMovingAverageFilter`, `LowPassFilter`.
+
+---
+
+## Experiment Tracking (Programmatic API)
+
+```python
+from robot_lab.experiments import ExperimentTracker, ResultsDatabase, get_template
+
+tracker = ExperimentTracker("my_experiment", "run_001")
+tracker.update("hyperparameters", {"lr": 3e-4, "batch_size": 256})
+tracker.update("metrics", {"mean_reward": [120.0, 180.0, 210.0]})
+
+db = ResultsDatabase()
+best = db.get_best_run("my_experiment", metric="final_mean_reward")
+
+spec = get_template("algorithm_comparison")  # also: "hyperparam_sweep", "quick_test"
+```
+
+---
 
 ## Development
 
-### Running Tests
+### Testing
 
 ```bash
-pytest
+make test-fast      # all tests except slow training tests (~5s)
+make test           # full suite
+make test-coverage  # with HTML coverage report
 ```
 
 ### Code Quality
 
 ```bash
-ruff check src/
-ruff format src/
+make lint           # ruff check
+make format         # ruff format + check --fix
 ```
 
-## Output Files
+### Adding a Custom Environment
 
-After training, you'll find:
+See [docs/general/adding_environments.md](docs/general/adding_environments.md). Short version:
 
-- **Models**: `models/{algo}_{env}_parallel.zip`
-- **VecNormalize**: `models/{algo}_{env}_vecnorm.pkl`
-- **Best Model**: `models/best/`
-- **TensorBoard Logs**: `logs/{algo}_{env}_parallel/`
-- **Visualization**: `{env}_learned_policy_results.png`
-- **Experiments**: `experiments/{experiment_name}/`
+1. Implement `gym.Env` subclass in `robot_lab/envs/`
+2. Register in `robot_lab/envs/__init__.py`
+3. Create `robot_lab/configs/{envbase}_{algo}.json`
 
-## Customization
+---
 
-### Adding Custom Environments
+## Research Roadmap
 
-1. Create your environment in `src/robot_lab/envs/`
-2. Register it in `src/robot_lab/envs/__init__.py`:
+This project follows a 40-week curriculum learning and sim2real research plan:
 
-```python
-from gymnasium.envs.registration import register
+| Phase | Weeks | Focus |
+|---|---|---|
+| **0 — Foundations** | 1–4 | Clean baselines, reproducibility, experiment infrastructure ✅ |
+| **0.5 — Smooth Control** | 4–6 | Trajectory generation, action filtering, PD gain exploration |
+| **1 — Curriculum Basics** | 5–10 | Manual vs adaptive curriculum, sample efficiency |
+| **2 — Representation** | 11–18 | Goal-conditioned RL, curriculum + domain randomisation |
+| **3 — Sim2Real** | 19–30 | Morphology transfer, dynamics gap, transfer learning |
+| **4 — Scientific** | 31–40 | Curriculum as exploration shaping, publication-grade results |
 
-register(
-    id='MyEnv-v0',
-    entry_point='robot_lab.envs.my_env:MyEnv',
-    max_episode_steps=1000,
-)
-```
+📖 Full plan: [docs/user/PLAN.md](docs/user/PLAN.md) | Current sprint: [docs/user/TODO.md](docs/user/TODO.md)
 
-3. Create a hyperparameter config in `src/robot_lab/configs/myenv_sac.json`
-
-### Creating Custom Hyperparameter Configs
-
-Copy an existing config and modify:
-
-```bash
-cp src/robot_lab/configs/walker2d_sac.json src/robot_lab/configs/myenv_sac.json
-# Edit the new file with your parameters
-```
-
-## Examples
-
-### Example 1: Quick Training Run
-
-```bash
-# Train for quick test (uses MountainCarContinuous)
-robot-lab train --env MountainCarContinuous-v0 --algo SAC --seed 42
-```
-
-### Example 2: Full Training with Evaluation
-
-```bash
-robot-lab train \
-  --env Walker2d-v5 \
-  --algo SAC \
-  --seed 42 \
-  --eval-freq 10000 \
-  --eval-episodes 10 \
-  --checkpoints \
-  --save-freq 50000
-```
-
-### Example 3: Custom Output Directory
-
-```bash
-# Train with custom output location
-robot-lab train \
-  --env HalfCheetah-v5 \
-  --algo PPO \
-  --output-dir ./my_experiments/halfcheetah_ppo_001
-
-# Visualize from custom location
-robot-lab visualize \
-  --env HalfCheetah-v5 \
-  --algo PPO \
-  --output-dir ./my_experiments/halfcheetah_ppo_001
-```
-
-### Example 4: Experiment Automation
-
-```python
-from robot_lab.experiments import get_template, ExperimentTracker
-import json
-
-# Create experiment spec
-spec = get_template("algorithm_comparison")
-spec["experiment_metadata"]["name"] = "locomotion_study"
-spec["environments"] = [
-    {"name": "Walker2d-v5", "config_overrides": {}},
-    {"name": "HalfCheetah-v5", "config_overrides": {}}
-]
-
-# Save for future use
-with open("locomotion_study.json", "w") as f:
-    json.dump(spec, f, indent=2)
-```
-
-## Troubleshooting
-
-### MuJoCo Installation Issues
-
-If you encounter MuJoCo errors:
-
-```bash
-# Ensure mujoco is properly installed
-pip uninstall gymnasium mujoco
-pip install gymnasium[mujoco]
-```
-
-### Import Errors
-
-If you get import errors after installation:
-
-```bash
-# Reinstall in editable mode
-pip install -e .
-```
-
-### Missing Dependencies
-
-```bash
-# Install all dependencies including optional ones
-pip install -e ".[dev,robot-descriptions]"
-```
-
-## Contributing
-
-Contributions are welcome! Areas for future development:
-
-1. **Experiment Manager**: Implement parallel experiment execution
-2. **Report Generation**: Automated markdown reports with plots
-3. **AI Planner**: LLM integration for experiment generation
-4. **Additional Algorithms**: TD3, DDPG, etc.
-5. **Curriculum Learning**: Progressive difficulty adjustment
-6. **Multi-task Learning**: Train on multiple environments simultaneously
+---
 
 ## License
 
@@ -481,10 +358,10 @@ MIT License
 
 ## Acknowledgments
 
-- Built with [Stable-Baselines3](https://stable-baselines3.readthedocs.io/)
-- Uses [Gymnasium](https://gymnasium.farama.org/) for environments
-- CLI powered by [Typer](https://typer.tiangolo.com/)
-- Validation with [Pydantic](https://pydantic-docs.helpmanual.io/)
+- [Stable-Baselines3](https://stable-baselines3.readthedocs.io/)
+- [Gymnasium](https://gymnasium.farama.org/)
+- [Typer](https://typer.tiangolo.com/) · [Rich](https://rich.readthedocs.io/) · [Loguru](https://loguru.readthedocs.io/)
+- [imageio](https://imageio.readthedocs.io/) + [imageio-ffmpeg](https://github.com/imageio/imageio-ffmpeg) for video recording
 
 ---
 
@@ -507,4 +384,3 @@ Invoke workflows by attaching a prompt file from `.github/prompts/` in Copilot C
 ```
 #file:.github/prompts/bmad-bmm-validate-prd.prompt.md
 ```
-

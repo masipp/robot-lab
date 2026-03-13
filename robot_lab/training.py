@@ -1,22 +1,24 @@
 """Core training functionality for robot_lab."""
 
-import gymnasium as gym
-import torch
-from stable_baselines3 import SAC, PPO
-from stable_baselines3.common.vec_env import SubprocVecEnv, VecNormalize, DummyVecEnv
-from stable_baselines3.common.callbacks import EvalCallback, CheckpointCallback, CallbackList
-from stable_baselines3.common.monitor import Monitor
-import numpy as np
+import random
 from pathlib import Path
-from typing import Optional, Dict, Any, Tuple
+from typing import Any, Dict, Optional, Tuple
+
+import gymnasium as gym
+import numpy as np
+import torch
 from loguru import logger
+from stable_baselines3 import PPO, SAC
+from stable_baselines3.common.callbacks import CallbackList
+from stable_baselines3.common.monitor import Monitor
+from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecNormalize
 
 from robot_lab.config import load_hyperparameters
-from robot_lab.utils.paths import get_models_dir, get_logs_dir, get_tensorboard_dir
-from robot_lab.utils.run_utils import generate_run_id, cleanup_old_runs
-from robot_lab.utils.metadata import save_training_metadata, append_final_metrics
-from robot_lab.utils.callbacks import TimeBasedCheckpointCallback, VecNormalizeSaveCallback
-from robot_lab.envs import make_env
+from robot_lab.experiments.tracker import ExperimentTracker
+from robot_lab.utils.callbacks import RobotLabCheckpointCallback, RobotLabEvalCallback
+from robot_lab.utils.metadata import append_final_metrics, save_training_metadata
+from robot_lab.utils.paths import get_logs_dir, get_models_dir, get_tensorboard_dir
+from robot_lab.utils.run_utils import cleanup_old_runs, generate_run_id
 
 
 def train(
@@ -42,7 +44,8 @@ def train(
         env_name: Name of the gymnasium environment
         algorithm: Algorithm to use ("SAC" or "PPO")
         config_path: Optional path to custom configuration file
-        env_config_path: Optional path to environment configuration YAML (control params, physics, etc.)
+        env_config_path: Optional path to environment configuration YAML
+            (control params, physics, etc.)
         seed: Random seed for reproducibility
         output_dir: Optional custom output directory
         eval_freq: Frequency (in timesteps) of evaluation
@@ -95,7 +98,9 @@ def train(
     
     # Apply parameter overrides (for experiment runner)
     num_envs_final = num_envs if num_envs is not None else config["num_envs"]
-    total_timesteps_final = total_timesteps if total_timesteps is not None else config["total_timesteps"]
+    total_timesteps_final = (
+        total_timesteps if total_timesteps is not None else config["total_timesteps"]
+    )
     
     vec_norm_config = config["vec_normalize"]
     hyperparams = config["hyperparameters"]
@@ -135,7 +140,12 @@ def train(
             return env
         return _init
     
-    envs = SubprocVecEnv([make_env_with_wrapper(env_name, i, seed, **env_kwargs_final) for i in range(num_envs_final)])
+    envs = SubprocVecEnv(
+        [
+            make_env_with_wrapper(env_name, i, seed, **env_kwargs_final)
+            for i in range(num_envs_final)
+        ]
+    )
     
     # Apply normalization
     logger.info("Applying observation and reward normalization...")
@@ -197,7 +207,7 @@ def train(
         logger.info(f"  CUDA version: {torch.version.cuda}")
         logger.info(f"  PyTorch CUDA: {torch.version.cuda}")
         logger.info(f"  Available GPUs: {torch.cuda.device_count()}")
-        logger.success(f"Training will use GPU acceleration")
+        logger.success("Training will use GPU acceleration")
     else:
         logger.warning("⚠ No GPU detected - training will use CPU")
         logger.warning("  For GPU support:")
@@ -218,47 +228,45 @@ def train(
     
     # Set up callbacks
     callbacks = []
-    
-    # Evaluation callback - save to run directory
-    eval_callback = EvalCallback(
+
+    # Evaluation callback — saves best_model.zip + best_model_vecnorm.pkl as an atomic pair
+    eval_callback = RobotLabEvalCallback(
         eval_env,
         best_model_save_path=str(models_dir / "best"),
-        log_path=str(run_dir),  # Save eval results to run directory
+        log_path=str(run_dir),
         eval_freq=eval_freq,
         n_eval_episodes=eval_episodes,
         deterministic=True,
-        render=False
+        render=False,
     )
     callbacks.append(eval_callback)
-    
-    # Time-based checkpoint callback - saves every 10 minutes
+
+    # Atomic checkpoint callback — saves .zip + _vecnorm.pkl together every 10 minutes
     time_checkpoint_dir = models_dir / "checkpoints" / run_id
-    time_checkpoint_callback = TimeBasedCheckpointCallback(
-        save_freq_seconds=600,  # 10 minutes
+    checkpoint_callback = RobotLabCheckpointCallback(
+        save_freq_seconds=600,
         save_path=str(time_checkpoint_dir),
         name_prefix=f"{algo_name}_{env_base_name}",
-        verbose=1
+        verbose=1,
     )
-    callbacks.append(time_checkpoint_callback)
+    callbacks.append(checkpoint_callback)
     
-    # Save VecNormalize alongside model checkpoints
-    vecnorm_checkpoint_callback = VecNormalizeSaveCallback(
-        save_path=str(time_checkpoint_dir),
-        name_prefix=f"{algo_name}_{env_base_name}_vecnorm",
-        save_freq_seconds=600,  # 10 minutes, synchronized with model checkpoints
-        verbose=1
-    )
-    callbacks.append(vecnorm_checkpoint_callback)
-    
-    # Timestep-based checkpoint callback (if enabled)
+    # Timestep-based atomic checkpoint (if enabled)
     if use_checkpoints and save_freq:
-        checkpoint_callback = CheckpointCallback(
-            save_freq=save_freq,
+        timestep_ckpt = RobotLabCheckpointCallback(
+            save_freq_seconds=0,
             save_path=str(models_dir / "checkpoints" / "timestep_based"),
-            name_prefix=f"{algo_name}_{env_base_name}"
+            name_prefix=f"{algo_name}_{env_base_name}",
         )
-        callbacks.append(checkpoint_callback)
-    
+        # Override interval check to fire on timestep cadence instead of wall-clock
+        def _timestep_on_step(cb=timestep_ckpt, freq=save_freq):
+            if cb.num_timesteps % freq == 0:
+                cb._save_atomic_pair()
+            return True
+
+        timestep_ckpt._on_step = _timestep_on_step
+        callbacks.append(timestep_ckpt)
+
     callback_list = CallbackList(callbacks)
     
     # Create and train model
@@ -287,13 +295,38 @@ def train(
     
     logger.info(f"Starting training for {total_timesteps_final:,} timesteps...")
     logger.info(f"Seed: {seed}")
-    logger.info(f"Callbacks: Eval every {eval_freq} steps | Time-based checkpoints every 10 minutes")
+    logger.info(
+        f"Callbacks: Eval every {eval_freq} steps | Time-based checkpoints every 10 minutes"
+    )
     if use_checkpoints and save_freq:
         logger.info(f"  Additional timestep-based checkpoints every {save_freq:,} steps")
-    
+
+    # Set global seeds for reproducibility before any training steps
+    random.seed(seed)
+    np.random.seed(seed)
+
+    # Start experiment tracker (metadata.json in experiments/<name>/runs/<run_id>/)
+    tracker = ExperimentTracker(
+        experiment_name=f"{algo_name}_{env_base_name}",
+        run_name=run_id,
+        seed=seed,
+        phase=0,
+        config_snapshot=config,
+        output_dir=output_dir,
+    )
+    tracker.start_run()
+
     # Train
-    model.learn(total_timesteps=total_timesteps_final, callback=callback_list)
-    
+    try:
+        model.learn(total_timesteps=total_timesteps_final, callback=callback_list)
+        tracker.end_run("COMPLETED")
+    except KeyboardInterrupt:
+        tracker.end_run("INTERRUPTED")
+        raise
+    except Exception:
+        tracker.end_run("FAILED")
+        raise
+
     # Save final model and normalization stats
     logger.info(f"Saving model to {model_path}...")
     model.save(str(model_path))
@@ -311,8 +344,8 @@ def train(
     logger.info(f"Run directory: {run_dir}")
     logger.info(f"  - Model: {model_path.name}")
     logger.info(f"  - VecNormalize: {vecnorm_path.name}")
-    logger.info(f"  - Training log: training.log")
-    logger.info(f"  - Evaluation: evaluations.npz")
+    logger.info("  - Training log: training.log")
+    logger.info("  - Evaluation: evaluations.npz")
     logger.info(f"TensorBoard: {tensorboard_path}")
     logger.info(f"Best model: {models_dir / 'best'}")
     logger.info(f"Checkpoints (10 min intervals): {time_checkpoint_dir}")

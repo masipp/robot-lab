@@ -9,7 +9,126 @@ from typing import Any, Dict, Optional, Tuple
 
 import gymnasium as gym
 import numpy as np
-from gymnasium import spaces
+
+# ---------------------------------------------------------------------------
+# Mixin — tracker parameter logging
+# ---------------------------------------------------------------------------
+
+
+class RobotLabWrapperMixin:
+    """Mixin that logs wrapper class name and init parameters to ExperimentTracker.
+
+    Apply this mixin alongside ``gym.Wrapper`` subclasses that participate in the
+    robot-lab experiment tracking system.  The mixin adds a single utility method
+    ``_log_to_tracker()`` — no RL logic lives here.
+
+    Usage::
+
+        class MyWrapper(gym.Wrapper, RobotLabWrapperMixin):
+            def __init__(self, env, tracker=None, alpha=0.5):
+                super().__init__(env)
+                self._log_to_tracker(tracker, {"alpha": alpha})
+    """
+
+    def _log_to_tracker(
+        self,
+        tracker: Any,  # Optional[ExperimentTracker] — kept as Any to avoid circular import
+        params: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """Merge wrapper identity and params into ``tracker._metadata["config"]``.
+
+        Args:
+            tracker: An ``ExperimentTracker`` instance, or ``None`` to skip logging.
+            params: Additional keyword parameters to store alongside the wrapper name.
+                    Must be JSON-serialisable.
+        """
+        if tracker is None:
+            return
+
+        entry: Dict[str, Any] = {"wrapper": type(self).__name__}
+        if params:
+            entry.update(params)
+
+        tracker._metadata["config"].update(entry)
+        tracker._write()
+
+
+# ---------------------------------------------------------------------------
+# ActionFilterWrapper — YouAreLazy scaffold
+# ---------------------------------------------------------------------------
+
+
+class ActionFilterWrapper(gym.Wrapper, RobotLabWrapperMixin):
+    """Scaffold base class for action-filtering Gym wrappers.
+
+    Subclass this and implement ``_apply_filter(action)`` to define your
+    filtering strategy (low-pass, EMA, splines, etc.).  The infrastructure —
+    tracker logging, step delegation — is provided here so you can focus on
+    the filter logic itself.
+
+    The ``_apply_filter`` method intentionally raises ``NotImplementedError``
+    (YouAreLazy boundary).  Implementing the filter is a *learning-critical*
+    task for the robot-lab research roadmap.
+
+    Args:
+        env: The Gymnasium environment to wrap.
+        tracker: Optional ``ExperimentTracker`` instance.  When provided, the
+                 wrapper class name and any extra ``kwargs`` are written to
+                 ``metadata.json["config"]`` at construction time.
+        **kwargs: Additional keyword arguments passed to ``_log_to_tracker``
+                  as parameter metadata.
+
+    Example::
+
+        class MyEMAFilter(ActionFilterWrapper):
+            def __init__(self, env, alpha=0.7, **kwargs):
+                super().__init__(env, **kwargs)
+                self.alpha = alpha
+
+            def _apply_filter(self, action):
+                # implement EMA logic here
+                ...
+
+        env = gym.make("Walker2d-v5")
+        env = MyEMAFilter(env, alpha=0.7, tracker=tracker)
+    """
+
+    def __init__(
+        self,
+        env: gym.Env,
+        tracker: Optional[Any] = None,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(env)
+        self._log_to_tracker(tracker, kwargs if kwargs else None)
+
+    def _apply_filter(self, action: np.ndarray) -> np.ndarray:
+        """Apply the action filter.  Subclasses MUST override this method.
+
+        Args:
+            action: Raw action array from the policy.
+
+        Returns:
+            Filtered action array to be passed to the inner environment.
+
+        Raises:
+            NotImplementedError: Always — this is the YouAreLazy boundary.
+        """
+        raise NotImplementedError("Implement _apply_filter() to define your filtering logic.")
+
+    def step(
+        self, action: np.ndarray
+    ) -> Tuple[np.ndarray, float, bool, bool, Dict[str, Any]]:
+        """Filter action then delegate to the wrapped environment.
+
+        Args:
+            action: Raw action array from the policy.
+
+        Returns:
+            obs, reward, terminated, truncated, info from the inner environment.
+        """
+        filtered_action = self._apply_filter(action)
+        return self.env.step(filtered_action)
 
 
 class ActionRepeatWrapper(gym.Wrapper):

@@ -73,13 +73,13 @@ test-coverage:
 # Lint code
 lint:
 	@echo "Running ruff linter..."
-	@ruff check robot_lab/ tests/
+	@uv tool run ruff check robot_lab/ tests/
 
 # Format code
 format:
 	@echo "Formatting code with ruff..."
-	@ruff format robot_lab/ tests/
-	@ruff check --fix robot_lab/ tests/
+	@uv tool run ruff format robot_lab/ tests/
+	@uv tool run ruff check --fix robot_lab/ tests/
 
 # Install dependencies
 install:
