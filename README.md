@@ -97,7 +97,8 @@ robot-lab tensorboard --logdir data/experiments/   # compare all runs
 robot-lab info
 ```
 
-📖 **Full walkthrough**: [docs/general/getting_started.md](docs/general/getting_started.md)
+📖 **Full walkthrough**: [docs/general/getting_started.md](docs/general/getting_started.md)  
+📖 **Running experiment campaigns**: [docs/general/running_experiments.md](docs/general/running_experiments.md)
 
 ---
 
@@ -134,6 +135,8 @@ robot-lab/
 │   │       ├── base.py         # MetricsPlugin, MetadataPlugin ABC
 │   │       └── defaults.py     # Built-in plugins (reward, smoothness, system info)
 │   └── utils/
+│       ├── callbacks.py        # PluginBridgeCallback (wires SB3 loop → plugin registry)
+│       │                       # RobotLabCheckpointCallback, RobotLabEvalCallback
 │       ├── paths.py            # get_models_dir, get_logs_dir (respects --output-dir)
 │       └── ...
 ├── experiments/                # Experiment documentation (tracked in git)

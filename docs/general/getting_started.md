@@ -225,6 +225,7 @@ for name, r in results.items():
 
 | I want to... | Go to... |
 |---|---|
+| Run the smooth locomotion campaign | [docs/general/running_experiments.md](running_experiments.md) |
 | Run the smooth locomotion variants | [experiments/0_foundations/001_smooth_locomotion.md](../../experiments/0_foundations/001_smooth_locomotion.md) |
 | Understand the experiment tracking schema | [docs/general/experiment_schema.md](experiment_schema.md) |
 | Add a new environment | [docs/general/adding_environments.md](adding_environments.md) |
