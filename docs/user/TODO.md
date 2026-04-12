@@ -85,16 +85,17 @@ Before implementing, you must be able to explain:
   - [ ] Design experiment comparing raw vs smoothed actions
   
 - [ ] **Implementation** (16 hours) - **YOU IMPLEMENT**
-  - [ ] Implement action smoothing filter (low-pass, EMA)
-  - [ ] Add temporal regularization loss (action change penalty)
+  - [x] Implement action smoothing filter (low-pass, EMA) ← `ActionFilterWrapper` + `ExponentialMovingAverageFilter` in `wrappers.py`
+  - [x] Implement wrapper for action filtering ← `ActionFilterWrapper` base class with `_apply_filter` / `reset` / `step`
+  - [ ] Add temporal regularization loss (action change penalty) ← **NEXT**
   - [ ] Create trajectory primitive library
-  - [ ] Implement wrapper for action filtering
   
 - [ ] **Evaluation** (8 hours)
-  - [ ] Train baseline (raw actions) on Walker2d
-  - [ ] Train smoothed variants (3 approaches)
-  - [ ] Measure smoothness metrics (jerk, action variance)
-  - [ ] Record videos for qualitative comparison
+  - [ ] Train baseline (α=1.0, raw actions) on A1Quadruped — `exp2_ema_a10`
+  - [ ] Train EMA variants α ∈ {0.7, 0.5, 0.3} — `exp2_ema_a{07,05,03}`
+  - [ ] Read `smoothness/action_delta_norm` from TensorBoard; compare across α
+  - [ ] Measure lag: plot |filtered − raw| per episode for each α
+  - [ ] Record videos for qualitative comparison (does lower α visually look smoother?)
   
 - [ ] **Documentation** (4 hours)
   - [ ] Write trajectory generation guide

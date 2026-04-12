@@ -114,10 +114,18 @@
 ### 4. Motion Planning & Control
 
 #### 4.1 Trajectory Generation
-- **Trajectory Smoothing (low-pass, EMA)**: 1.5
+- **Trajectory Smoothing (low-pass, EMA)**: 2.5
   - Evidence: 2026-02-18 - Understood lag tradeoffs, frameskip vs filtering concepts
-  - Weak points: Filter frequency selection, empirical validation, mathematical analysis
-  - Next steps: Implement and compare EMA/frameskip methods in Exp 1
+  - Evidence: 2026-03-19 - Correctly derived all three implementation decisions without prompting:
+    (1) filter must be applied during training not just eval (train/test mismatch reasoning),
+    (2) `_prev_action = None` with pass-through on first step (correct neutral element),
+    (3) smoothness metric must use filtered action not raw output (otherwise low α appears worse)
+  - Evidence: 2026-03-19 - Implemented `ActionFilterWrapper._apply_filter()` and `reset()` correctly;
+    stored filtered (not raw) in `_prev_action`, handled episode boundary reset
+  - Weak points: Empirical α selection (no data yet), quantitative frequency response analysis,
+    comparing EMA vs LowPassFilter cutoff frequency parameterisation in practice
+  - Next steps: Run Exp 2 variants (α ∈ {1.0, 0.7, 0.5, 0.3}), analyse TensorBoard
+    `smoothness/action_delta_norm` curves, connect results to filter theory (α ↔ f_c)
   
 - **Trajectory Parameterization (splines, Bézier)**: 1
   - Evidence: [To be updated]
@@ -338,6 +346,27 @@
     - Analyze jerk/smoothness metrics after training
     - Understand filter frequency response (Bode plots, cutoff frequencies)
     - Study minimum jerk trajectories in literature
+
+- **2026-03-19 - EMA Action Filter Implementation**: Full Socratic dialogue + implementation
+  - Skills updated:
+    - **Trajectory Smoothing**: 1.5 → 2.5
+    - **Experiment Design / Hypothesis Formation**: 2.5 → 3
+  - Evidence:
+    - Independently derived that filter must be in the training loop (not test-time only),
+      citing train/test mismatch and policy pre-compensation — correct without prompting
+    - Correctly identified `_prev_action = None` as the right initialisation,
+      and explained the zero-initialisation alternative and its artefact
+    - Correctly argued smoothness metric must use filtered action;  reasoning was precise:
+      "otherwise you would get a less smooth output for lower alpha as described"
+    - Implemented `_apply_filter`, `reset`, and `step` with correct semantics;
+      stored `filtered` (not `action`) in `_prev_action` without being told
+  - Weak points revealed:
+    - Has not yet connected α empirically to actual cutoff frequency / Bode plots
+    - No experience yet interpreting `smoothness/action_delta_norm` curves from real training runs
+  - Recommended focus:
+    - Execute Exp 2 (α sweep) and read the TensorBoard smoothness curves
+    - Try plotting |filtered − raw| over an episode to build intuition for lag at different α
+    - After results: try to derive optimal α from first principles vs picking empirically
 
 - **2026-02-19 - MuJoCo Actuator Configuration**: Hands-on implementation of dynamic gain parameters
   - Skills updated:

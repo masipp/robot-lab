@@ -97,9 +97,12 @@ class ActionFilterWrapper(gym.Wrapper, RobotLabWrapperMixin):
         self,
         env: gym.Env,
         tracker: Optional[Any] = None,
+        alpha: float = 1.0,
         **kwargs: Any,
     ) -> None:
         super().__init__(env)
+        self.alpha = alpha
+        self._prev_action = None
         self._log_to_tracker(tracker, kwargs if kwargs else None)
 
     def _apply_filter(self, action: np.ndarray) -> np.ndarray:
@@ -114,12 +117,37 @@ class ActionFilterWrapper(gym.Wrapper, RobotLabWrapperMixin):
         Raises:
             NotImplementedError: Always — this is the YouAreLazy boundary.
         """
-        raise NotImplementedError("Implement _apply_filter() to define your filtering logic.")
+        if self._prev_action is None:
+            self._prev_action = action.copy()
+            return action
+        res_action = action * self.alpha + self._prev_action * (1 - self.alpha)
+        self._prev_action = res_action.copy()
+        return res_action
+
+    def reset(
+        self, *, seed: Optional[int] = None, options: Optional[Dict[str, Any]] = None
+    ) -> Tuple[np.ndarray, Dict[str, Any]]:
+        """Reset environment and clear filter state.
+
+        Args:
+            seed: Optional RNG seed forwarded to the wrapped environment.
+            options: Optional reset options forwarded to the wrapped environment.
+
+        Returns:
+            obs, info from the inner environment.
+        """
+        self._prev_action = None
+        return self.env.reset(seed=seed, options=options)
 
     def step(
         self, action: np.ndarray
     ) -> Tuple[np.ndarray, float, bool, bool, Dict[str, Any]]:
         """Filter action then delegate to the wrapped environment.
+
+        Routes through ``_apply_filter`` so subclasses can override the logic.
+        Injects ``filtered_action`` and ``raw_action`` into ``info`` so that
+        the ``PluginBridgeCallback`` can pass the *actual* control signal to
+        ``ActionSmoothnessMetricPlugin`` rather than the raw policy output.
 
         Args:
             action: Raw action array from the policy.
@@ -127,8 +155,11 @@ class ActionFilterWrapper(gym.Wrapper, RobotLabWrapperMixin):
         Returns:
             obs, reward, terminated, truncated, info from the inner environment.
         """
-        filtered_action = self._apply_filter(action)
-        return self.env.step(filtered_action)
+        filtered = self._apply_filter(action)
+        obs, reward, terminated, truncated, info = self.env.step(filtered)
+        info["filtered_action"] = filtered
+        info["raw_action"] = action
+        return obs, reward, terminated, truncated, info
 
 
 class ActionRepeatWrapper(gym.Wrapper):
@@ -246,7 +277,10 @@ class ExponentialMovingAverageFilter(gym.Wrapper):
 
         self.previous_action = filtered_action.copy()
 
-        return self.env.step(filtered_action)
+        obs, reward, terminated, truncated, info = self.env.step(filtered_action)
+        info["filtered_action"] = filtered_action
+        info["raw_action"] = action
+        return obs, reward, terminated, truncated, info
 
 
 class LowPassFilter(gym.Wrapper):
@@ -309,7 +343,10 @@ class LowPassFilter(gym.Wrapper):
 
         self.previous_action = filtered_action.copy()
 
-        return self.env.step(filtered_action)
+        obs, reward, terminated, truncated, info = self.env.step(filtered_action)
+        info["filtered_action"] = filtered_action
+        info["raw_action"] = action
+        return obs, reward, terminated, truncated, info
 
 
 def create_action_wrapper(

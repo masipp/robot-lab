@@ -15,7 +15,7 @@ from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecNorm
 
 from robot_lab.config import load_hyperparameters
 from robot_lab.experiments.tracker import ExperimentTracker
-from robot_lab.utils.callbacks import RobotLabCheckpointCallback, RobotLabEvalCallback
+from robot_lab.utils.callbacks import PluginBridgeCallback, RobotLabCheckpointCallback, RobotLabEvalCallback
 from robot_lab.utils.metadata import append_final_metrics, save_training_metadata
 from robot_lab.utils.paths import get_logs_dir, get_models_dir, get_tensorboard_dir
 from robot_lab.utils.run_utils import cleanup_old_runs, generate_run_id
@@ -315,6 +315,13 @@ def train(
         output_dir=output_dir,
     )
     tracker.start_run()
+
+    # Plugin bridge — connects SB3's training loop to the metrics_registry.
+    # Must be created after tracker.start_run() so the tracker reference is live.
+    # ActionSmoothnessMetricPlugin and BasicRewardLogPlugin are auto-registered
+    # as defaults; they don't need explicit registration here.
+    plugin_bridge = PluginBridgeCallback(tracker=tracker)
+    callbacks.append(plugin_bridge)
 
     # Train
     try:

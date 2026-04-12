@@ -263,3 +263,111 @@ class RobotLabEvalCallback(EvalCallback):
 
         return result
 
+
+# ---------------------------------------------------------------------------
+# Plugin bridge callback (wires SB3 training loop → robot_lab plugin registry)
+# ---------------------------------------------------------------------------
+
+
+class PluginBridgeCallback(BaseCallback):
+    """Bridges SB3's training loop to the robot_lab MetricsPlugin registry.
+
+    On every training step this callback:
+
+    1. Reads the action that was *actually sent to the environment*.  If an
+       action-filter wrapper is active (e.g. ``ActionFilterWrapper``,
+       ``ExponentialMovingAverageFilter``) it injects ``filtered_action`` into
+       the ``info`` dict.  The bridge prefers that value so smoothness metrics
+       operate on the real control signal, not the raw policy output.  If no
+       filter is present it falls back to ``self.locals["actions"]``.
+
+    2. Calls ``metrics_registry.on_step(context)``.
+
+    3. Detects episode boundaries via ``dones`` and calls
+       ``metrics_registry.on_episode_end(context)`` once per step where at
+       least one environment finished an episode.
+
+    The ``context`` dict passed to all plugins on every step::
+
+        {
+            "actions":    np.ndarray,          # filtered if available, else raw
+            "n_steps":    int,                 # global timestep counter
+            "tracker":    ExperimentTracker,   # or None
+            "sb3_logger": SB3 Logger,          # TensorBoard logger
+        }
+
+    Additional key on episode end::
+
+        {
+            "episode_rewards": list[float],    # accumulated across all episodes so far
+        }
+
+    Args:
+        tracker: Optional ``ExperimentTracker`` instance.  When provided,
+            plugins that write to ``metrics.json`` will use it.
+        verbose: SB3 verbosity level (0 = silent).
+
+    Registration (happens automatically inside ``train()``)::
+
+        bridge = PluginBridgeCallback(tracker=tracker)
+        callbacks.append(bridge)
+    """
+
+    def __init__(self, tracker: Optional[object] = None, verbose: int = 0) -> None:
+        super().__init__(verbose)
+        self.tracker = tracker
+        # Running accumulator: grows throughout the entire training run so that
+        # BasicRewardLogPlugin receives the complete history on each episode_end.
+        self._episode_rewards: list = []
+
+    def _init_callback(self) -> None:
+        """Trigger lazy default plugin registration on training start."""
+        from robot_lab.experiments.plugins import _register_defaults
+        _register_defaults()
+
+    def _on_step(self) -> bool:
+        """Fire metrics_registry hooks with context built from SB3 locals."""
+        import numpy as np
+        from robot_lab.experiments.plugins import metrics_registry
+
+        infos: list = self.locals.get("infos", [])
+
+        # --- Resolve the action that was actually sent to the environment ----
+        # Action-filter wrappers (ActionFilterWrapper, ExponentialMovingAverageFilter,
+        # LowPassFilter) all inject info["filtered_action"].  Using that value
+        # here is critical: measuring smoothness on the raw policy output would
+        # invert the result (lower α → *more* jitter in the raw metric).
+        filtered = [info["filtered_action"] for info in infos if "filtered_action" in info]
+        if filtered:
+            # Stack per-env filtered actions → (n_envs, action_dim);
+            # ActionSmoothnessMetricPlugin handles 2D arrays by averaging across envs.
+            actions = np.stack(filtered)
+        else:
+            actions = self.locals.get("actions")
+
+        context: dict = {
+            "actions": actions,
+            "n_steps": self.num_timesteps,
+            "tracker": self.tracker,
+            "sb3_logger": self.model.logger,
+        }
+        metrics_registry.on_step(context)
+
+        # --- Detect episode ends and fire on_episode_end -------------------
+        dones: list = self.locals.get("dones", [])
+        for done, info in zip(dones, infos):
+            if done and "episode" in info:
+                # Monitor wrapper puts {"r": float, "l": int, "t": float} here.
+                self._episode_rewards.append(float(info["episode"]["r"]))
+
+        if any(dones):
+            episode_context: dict = {
+                "tracker": self.tracker,
+                "sb3_logger": self.model.logger,
+                "n_steps": self.num_timesteps,
+                "episode_rewards": list(self._episode_rewards),
+            }
+            metrics_registry.on_episode_end(episode_context)
+
+        return True
+

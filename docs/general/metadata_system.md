@@ -147,6 +147,80 @@ Metadata is automatically saved:
 4. **Analysis**: JSON format easy to parse for analysis scripts
 5. **Self-documenting**: No need to remember training settings
 
+---
+
+## Plugin System & Auto-Tracked Metrics
+
+robots_lab uses a plugin registry to decouple metric collection from the training loop.
+Plugins are registered once and fire automatically on every run — no manual wiring needed.
+
+### Architecture
+
+```
+SB3 model.learn()
+    └── PluginBridgeCallback._on_step()        [utils/callbacks.py]
+            │  reads self.locals["infos"][*]["filtered_action"]  (filter wrappers)
+            │  or falls back to self.locals["actions"]           (no filter)
+            │
+            ├── metrics_registry.on_step(context)
+            │       └── ActionSmoothnessMetricPlugin   accumulates ‖aₜ−aₜ₋₁‖²
+            │
+            └── (on done) metrics_registry.on_episode_end(context)
+                    ├── ActionSmoothnessMetricPlugin   flushes to TensorBoard + metrics.json
+                    └── BasicRewardLogPlugin           writes episode_rewards to metrics.json
+```
+
+`PluginBridgeCallback` is added to the callback list automatically inside `train()` — it
+requires no configuration.
+
+### Built-in default plugins
+
+| Plugin | Trigger | Output |
+|--------|---------|--------|
+| `BasicRewardLogPlugin` | `on_episode_end` | `metrics.json["episode_rewards"]` |
+| `ActionSmoothnessMetricPlugin` | `on_step` + `on_episode_end` | TensorBoard `smoothness/action_delta_norm`; `metrics.json["smoothness_action_delta_norm"]` |
+| `SystemMetadataPlugin` | run end | `metadata.json["custom"]["system_metadata"]` |
+
+### Smoothness metric detail
+
+`action_delta_norm` is $\sum_t \|a_t - a_{t-1}\|^2$ accumulated over one episode.
+
+When an action-filter wrapper (e.g. `ActionFilterWrapper`, `ExponentialMovingAverageFilter`)
+is active, the metric operates on the **filtered** control signal injected via
+`info["filtered_action"]`, not the raw policy output. This ensures lower α values
+correctly report lower (smoother) jitter.
+
+### Adding a custom plugin
+
+```python
+from robot_lab.experiments.plugins import MetricsPlugin, register_metric_plugin
+from typing import Any
+
+class MyPlugin(MetricsPlugin):
+    def on_step(self, context: dict[str, Any]) -> None:
+        action = context.get("actions")   # filtered if wrapper active
+        ...
+
+    def on_episode_end(self, context: dict[str, Any]) -> None:
+        tracker = context.get("tracker")  # write to metrics.json
+        ...
+
+    def on_eval(self, context: dict[str, Any]) -> None:
+        pass
+
+register_metric_plugin(MyPlugin())  # active for all subsequent train() calls
+```
+
+For run-scoped registration (plugin active only for one training run):
+
+```python
+from robot_lab.experiments.plugins import metrics_registry, register_metric_plugin
+
+with metrics_registry.run_scope():
+    register_metric_plugin(MyPlugin(), run_scoped=True)
+    train(...)   # MyPlugin active only here
+```
+
 ## Environment Configuration Tracking
 
 **NEW**: As of Phase 0 experiments, control and physics parameters are now tracked separately for reproducibility.

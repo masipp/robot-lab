@@ -103,8 +103,32 @@ robot-lab train --env A1Quadruped-v0 --algo SAC --seed 42 \
 
 
 ### Exp 2: Action Filtering
-Test exponential moving average: `action_t = α * policy_output + (1-α) * action_{t-1}`  
-Use baseline model (no retraining). Test α ∈ {0.7, 0.5, 0.3}.
+Test exponential moving average: `action_t = α * policy_output + (1-α) * action_{t-1}`
+
+**Important**: Each α value requires a **separate retraining run**. Applying the filter only at
+test time creates a train/test mismatch — the policy never experiences the filter's lag during
+training, causing erratic pre-compensating behaviour. With the filter inside the wrapper (which
+is applied in `env_wrapper_fn` before `Monitor`), the policy learns the filtered dynamics.
+
+The `ActionSmoothnessMetricPlugin` is auto-registered and tracks `smoothness/action_delta_norm`
+(∑‖aₜ−aₜ₋₁‖² per episode) from the **filtered** action (via `info["filtered_action"]`) —
+not the raw policy output. This means the metric correctly shows *decreasing* jitter as α
+decreases, mirroring what the environment actually receives.
+
+```python
+# experiment runner snippet — one run per alpha
+from robot_lab.wrappers import ActionFilterWrapper
+from robot_lab.training import train
+
+for alpha in [1.0, 0.7, 0.5, 0.3]:
+    train(
+        env_name="A1Quadruped-v0",
+        algorithm="SAC",
+        seed=42,
+        env_wrapper_fn=lambda env, a=alpha: ActionFilterWrapper(env, alpha=a),
+        output_dir=f"data/experiments/smooth_locomotion/exp2_ema_a{str(alpha).replace('.','')}",
+    )
+```
 
 | α | jerk_mean | action_delta | fwd_dist | fall_rate | lag |
 |---|-----------|--------------|----------|-----------|-----|
